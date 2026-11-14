@@ -1,9 +1,10 @@
 /**
  * src/components/CommuneCard.js
- * Composant d'affichage de la fiche synthétique d'une commune
+ * Composant d'affichage de la fiche synthétique d'une commune enrichie
  */
 
 import { fetchWeather } from '../services/weather.js';
+import { fetchCommuneDetails } from '../services/communeDetails.js';
 
 export class CommuneCardComponent {
   constructor(panelId) {
@@ -49,7 +50,7 @@ export class CommuneCardComponent {
 
     if (this.nameEl) this.nameEl.textContent = commune.nom;
     if (this.subtitleEl) {
-      this.subtitleEl.textContent = `Département ${commune.codeDepartement} • Code Insee : ${commune.code}`;
+      this.subtitleEl.textContent = `Dép. ${commune.codeDepartement} • Insee : ${commune.code}`;
     }
     if (this.popEl) {
       this.popEl.textContent = commune.population !== undefined 
@@ -69,11 +70,26 @@ export class CommuneCardComponent {
       this.panel.setAttribute('aria-hidden', 'false');
     }
 
-    // Récupération météo si coordonnées présentes
+    // Récupération météo
     if (commune.centre && commune.centre.coordinates) {
       const [lng, lat] = commune.centre.coordinates;
       this.loadWeather(lat, lng);
     }
+
+    // Enrichissement asynchrone des données officielles territoriales
+    fetchCommuneDetails(commune).then(enriched => {
+      if (!enriched || this.currentCommune?.code !== commune.code) return;
+      this.currentCommune = enriched;
+      
+      if (this.subtitleEl) {
+        let sub = `${enriched.departementNom} (${enriched.codeDepartement})`;
+        if (enriched.epciNom) sub += ` • ${enriched.epciNom}`;
+        this.subtitleEl.textContent = sub;
+      }
+      if (this.deptEl) {
+        this.deptEl.textContent = enriched.departementNom || enriched.codeDepartement;
+      }
+    }).catch(() => {});
   }
 
   async loadWeather(lat, lng) {

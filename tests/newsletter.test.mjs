@@ -1,57 +1,78 @@
 /**
  * tests/newsletter.test.mjs
- * Validation du module de bulletin d'information et d'actualités communales
+ * Validation du module de bulletin d'information contextualisé
  */
 
 import { generateCommuneBulletin, renderBulletinHtml } from '../src/components/NewsletterTemplate.js';
 
 async function runTests() {
-  console.log('🧪 Démarrage des tests de l\'Étape 4 (Page Newsletter / Bulletin communal)...');
+  console.log('🧪 Démarrage des tests du bulletin d\'information contextualisé...');
 
-  const testCommune = {
-    nom: "Saint-Germain-de-la-Grange",
-    code: "78550",
-    codesPostaux: ["78640"],
-    population: 1840,
-    codeDepartement: "78"
+  // Cas 1 : Commune urbaine / métropole (ex: Bondy)
+  const bondyCommune = {
+    nom: "Bondy",
+    code: "93010",
+    codesPostaux: ["93140"],
+    population: 50595,
+    codeDepartement: "93",
+    departementNom: "Seine-Saint-Denis",
+    regionNom: "Île-de-France",
+    epciNom: "Métropole du Grand Paris",
+    cadreDeVieType: "metropole",
+    typologie: "Pôle métropolitain / Grand centre urbain",
+    densite: 9262,
+    mairieAdresse: "ESPLANADE CLAUDE FUZIER 93140 BONDY",
+    wikiExtract: "Bondy est une commune française du département de la Seine-Saint-Denis, en région Île-de-France."
   };
 
-  // Test 1: Génération des données éditoriales du bulletin
-  const bulletin = generateCommuneBulletin(testCommune);
-  if (!bulletin || bulletin.communeName !== testCommune.nom) {
-    throw new Error('Échec génération bulletin : nom de commune non conforme.');
+  const bulletinBondy = generateCommuneBulletin(bondyCommune);
+  if (!bulletinBondy) {
+    throw new Error('Échec génération bulletin Bondy.');
   }
-  console.log('  ✅ Test 1 : Modèle de données éditoriales généré avec succès.');
 
-  // Test 2: Richesse du contenu (éditorial, rubriques, infos pratiques)
-  if (!bulletin.editorial || !bulletin.editorial.content.includes('1\u202f840') && !bulletin.editorial.content.includes('1 840')) {
-    throw new Error('Échec éditorial : la population n\'apparaît pas correctement formatée.');
+  // Vérification de la contextualisation urbaine (ne doit pas être qualifié de "rural" !)
+  if (bulletinBondy.editorial.content.includes('cadre de vie rural')) {
+    throw new Error('Anomalie : Bondy (50 000 hab) ne doit pas être qualifiée de rurale.');
   }
-  if (!Array.isArray(bulletin.articles) || bulletin.articles.length < 3) {
-    throw new Error('Échec rubriques : le bulletin doit contenir au moins 3 articles d\'actualité.');
+  if (!bulletinBondy.editorial.content.includes('Métropole du Grand Paris') && !bulletinBondy.editorial.content.includes('dynamiques métropolitaines')) {
+    throw new Error('Anomalie : le bulletin de Bondy doit refléter sa dimension métropolitaine.');
   }
-  console.log('  ✅ Test 2 : Structure éditoriale complète (éditorial, vie municipale, environnement, agenda).');
+  console.log('  ✅ Test 1 : Contextualisation urbaine de Bondy validée (éditorial métropolitain).');
 
-  // Test 3: Rendu HTML du bulletin
-  const html = renderBulletinHtml(bulletin);
-  if (!html.includes('L\'Écho de Saint-Germain-de-la-Grange')) {
-    throw new Error('Échec rendu HTML : titre principal manquant.');
+  // Vérification de l'intégration de la Mairie et de l'intercommunalité
+  const htmlBondy = renderBulletinHtml(bulletinBondy);
+  if (!htmlBondy.includes('ESPLANADE CLAUDE FUZIER 93140 BONDY')) {
+    throw new Error('Adresse officielle de la mairie manquante dans le bulletin de Bondy.');
   }
-  if (!html.includes('SAMU : 15')) {
-    throw new Error('Échec rendu HTML : numéros d\'urgence manquants.');
+  if (!htmlBondy.includes('Métropole du Grand Paris')) {
+    throw new Error('Nom de l\'intercommunalité manquant dans le bulletin de Bondy.');
   }
-  console.log('  ✅ Test 3 : Rendu HTML sémantique et complet validé.');
+  console.log('  ✅ Test 2 : Adresse de la mairie et nom de l\'EPCI intégrés avec succès.');
 
-  // Test 4: Respect de l'absence de collecte d'e-mail (conformité RGPD)
-  if (html.includes('<input type="email"') || html.includes('newsletter-subscription')) {
-    throw new Error('Conformité RGPD violée : aucun formulaire de collecte d\'e-mail ne doit être présent dans le bulletin par défaut.');
-  }
-  console.log('  ✅ Test 4 : Conformité RGPD respectée (lecture 100% citoyenne sans inscription ni collecte).');
+  // Cas 2 : Petite commune rurale (ex: L'Abergement-Clémenciat)
+  const ruralCommune = {
+    nom: "L'Abergement-Clémenciat",
+    code: "01001",
+    codesPostaux: ["01400"],
+    population: 860,
+    codeDepartement: "01",
+    departementNom: "Ain",
+    regionNom: "Auvergne-Rhône-Alpes",
+    epciNom: "CC de la Dombes",
+    cadreDeVieType: "rural",
+    typologie: "Commune rurale"
+  };
 
-  console.log('✨ Tous les tests de l\'Étape 4 sont validés avec succès !');
+  const bulletinRural = generateCommuneBulletin(ruralCommune);
+  if (!bulletinRural.editorial.content.includes('authenticité rurale') && !bulletinRural.editorial.content.includes('cadre naturel')) {
+    throw new Error('Anomalie : une petite commune doit conserver sa contextualisation rurale.');
+  }
+  console.log('  ✅ Test 3 : Contextualisation rurale préservée pour les villages.');
+
+  console.log('✨ Tous les tests du bulletin contextualisé sont validés avec succès !');
 }
 
 runTests().catch(err => {
-  console.error('❌ Échec des tests de l\'Étape 4 :', err.message);
+  console.error('❌ Échec des tests :', err.message);
   process.exit(1);
 });

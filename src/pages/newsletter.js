@@ -3,6 +3,7 @@
  * Gestionnaire d'affichage de la page bulletin d'information / newsletter
  */
 
+import { fetchCommuneDetails } from '../services/communeDetails.js';
 import { generateCommuneBulletin, renderBulletinHtml } from '../components/NewsletterTemplate.js';
 
 export class NewsletterPageView {
@@ -35,22 +36,43 @@ export class NewsletterPageView {
     });
   }
 
-  show(commune) {
+  async show(commune) {
     if (!commune || !this.overlay) return;
     this.currentCommune = commune;
 
-    const bulletinData = generateCommuneBulletin(commune);
-    const html = renderBulletinHtml(bulletinData);
-
+    // Affichage initial pendant le chargement des détails enrichis
     if (this.contentEl) {
-      this.contentEl.innerHTML = html;
+      this.contentEl.innerHTML = `
+        <div style="text-align: center; padding: 3rem 1rem; color: #64748b;">
+          <div style="font-size: 2rem; margin-bottom: 0.5rem;">⏳</div>
+          <p>Collecte des informations officielles et territoriales de <strong>${commune.nom}</strong>...</p>
+        </div>
+      `;
     }
 
     this.overlay.classList.remove('hidden');
     this.overlay.setAttribute('aria-hidden', 'false');
     document.body.style.overflow = 'hidden';
 
-    // Focus sur le bouton fermer
+    // Enrichissement dynamique via APIs ouvertes
+    try {
+      const enriched = await fetchCommuneDetails(commune);
+      const bulletinData = generateCommuneBulletin(enriched || commune);
+      const html = renderBulletinHtml(bulletinData);
+
+      if (this.contentEl) {
+        this.contentEl.innerHTML = html;
+      }
+    } catch (err) {
+      console.error('Erreur enrichissement bulletin:', err);
+      // Fallback avec données de base
+      const bulletinData = generateCommuneBulletin(commune);
+      const html = renderBulletinHtml(bulletinData);
+      if (this.contentEl) {
+        this.contentEl.innerHTML = html;
+      }
+    }
+
     if (this.closeBtn) {
       this.closeBtn.focus();
     }
