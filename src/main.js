@@ -31,7 +31,7 @@ async function loadCommunesData() {
     }
     communes = await response.json();
     if (statIndicator) {
-      statIndicator.textContent = `📍 ${communes.length.toLocaleString('fr-FR')} communes (< 2 000 hab)`;
+      statIndicator.textContent = `📍 ${communes.length.toLocaleString('fr-FR')} communes de France`;
     }
 
     // Initialiser la fiche de commune

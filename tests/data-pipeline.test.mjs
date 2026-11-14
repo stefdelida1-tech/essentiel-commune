@@ -31,12 +31,11 @@ async function runTests() {
   }
   console.log(`  ✅ Test 2 : Format JSON valide (${communes.length} communes recensées).`);
 
-  // Test 3: Vérification du seuil de population
-  const overPop = communes.filter(c => c.population > 2000);
-  if (overPop.length > 0) {
-    throw new Error(`Anomalie : ${overPop.length} communes dépassent le seuil de 2000 habitants.`);
+  // Test 3: Vérification de l'exhaustivité territoriale nationale
+  if (communes.length < 34000) {
+    throw new Error(`Anomalie : volume incomplet de communes (${communes.length} < 34 000 attendues).`);
   }
-  console.log('  ✅ Test 3 : Seuil de population <= 2 000 habitants respecté à 100%.');
+  console.log(`  ✅ Test 3 : Couverture intégrale de la France validée (${communes.length} communes).`);
 
   // Test 4: Intégrité des champs obligatoires et coordonnées
   let invalidCoords = 0;
