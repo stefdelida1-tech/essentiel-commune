@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>L'Essentiel de ma Commune — Explorer les communes de France</title>
+  <meta name="description"
+    content="Plateforme citoyenne et cartographique d'exploration des 29 402 petites communes françaises de moins de 2 000 habitants : météo en direct, indicateurs clés et bulletins locaux.">
+  <link rel="canonical" href="https://essentiel-commune.vercel.app/">
+
+  <!-- Open Graph / Facebook / LinkedIn -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://essentiel-commune.vercel.app/">
+  <meta property="og:title" content="L'Essentiel de ma Commune — Explorer les communes de France">
+  <meta property="og:description"
+    content="Plateforme citoyenne d'exploration des 29 402 petites communes françaises de moins de 2 000 habitants : météo en direct, indicateurs clés et bulletins locaux.">
+  <meta property="og:site_name" content="L'Essentiel de ma Commune">
+  <meta property="og:locale" content="fr_FR">
+
+  <!-- Twitter Cards -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="L'Essentiel de ma Commune">
+  <meta name="twitter:description" content="L'information citoyenne des petites communes de France.">
+
+  <!-- JSON-LD Données structurées Schema.org -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "L'Essentiel de ma Commune",
+    "url": "https://essentiel-commune.vercel.app/",
+    "description": "Plateforme citoyenne et cartographique d'exploration des petites communes françaises de moins de 2 000 habitants.",
+    "applicationCategory": "CivicApplication",
+    "operatingSystem": "All",
+    "inLanguage": "fr-FR"
+  }
+  </script>
+
+  <link rel="stylesheet" href="/src/style.css">
+  <link rel="icon"
+    href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏛️</text></svg>">
+</head>
+
+<body>
+
+  <!-- En-tête -->
+  <header class="app-header">
+    <a href="#" class="brand" aria-label="Accueil L'Essentiel de ma Commune">
+      <span class="brand-badge">🏛️ CITOYEN</span>
+      <div class="brand-text">
+        <h1>L'Essentiel de ma Commune</h1>
+        <p>L'information locale des communes de moins de 2 000 habitants</p>
+      </div>
+    </a>
+    <div class="header-meta" id="stat-indicator" aria-live="polite">
+      Chargement des communes...
+    </div>
+  </header>
+
+  <!-- Disposition principale avec carte -->
+  <main class="main-layout" role="main">
+
+    <!-- Barre de recherche flottante -->
+    <div class="search-container">
+      <div class="search-input-wrapper">
+        <span class="search-icon" aria-hidden="true">🔍</span>
+        <input type="search" id="search-input" class="search-input" placeholder="Rechercher une commune, code postal..."
+          aria-label="Rechercher une commune par nom ou code postal" autocomplete="off">
+        <button id="search-clear" class="search-clear-btn" aria-label="Effacer la recherche">✕</button>
+      </div>
+      <div id="search-results" class="search-results" role="listbox" aria-label="Résultats de recherche"></div>
+    </div>
+
+    <!-- Conteneur Carte Interactive Leaflet -->
+    <div id="map" aria-label="Carte interactive des communes de France"></div>
+
+    <!-- Panneau latéral / Fiche de la commune sélectionnée -->
+    <aside id="commune-card" class="commune-card-panel" aria-label="Fiche détaillée de la commune" aria-hidden="true">
+      <div class="card-header">
+        <button id="close-card-btn" class="close-btn" aria-label="Fermer la fiche">✕</button>
+        <h2 id="card-commune-name">Nom de la commune</h2>
+        <div class="card-subtitle" id="card-commune-subtitle">Département & Code postal</div>
+      </div>
+
+      <div class="card-body">
+        <div class="stat-grid">
+          <div class="stat-box">
+            <div class="stat-label">Population</div>
+            <div class="stat-value" id="card-commune-pop">-</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Code Insee</div>
+            <div class="stat-value" id="card-commune-insee">-</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Codes Postaux</div>
+            <div class="stat-value" id="card-commune-postal">-</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Département</div>
+            <div class="stat-value" id="card-commune-dept">-</div>
+          </div>
+        </div>
+
+        <!-- Météo en direct via Open-Meteo -->
+        <div class="weather-widget" id="weather-box">
+          <div class="weather-title">
+            <span>⛅ Météo locale en direct</span>
+          </div>
+          <div class="weather-content" id="weather-content">
+            <span class="weather-temp" id="weather-temp">--°C</span>
+            <span class="weather-desc" id="weather-desc">Chargement...</span>
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="card-actions">
+          <button id="btn-share-commune" class="btn-action btn-outline">
+            🔗 Copier le lien de cette commune
+          </button>
+          <a id="btn-newsletter-page" href="#" class="btn-action btn-primary">
+            📰 Consulter le bulletin communal
+          </a>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Vue Page Newsletter / Bulletin communal -->
+    <div id="newsletter-overlay" class="newsletter-modal-overlay hidden" role="dialog" aria-modal="true"
+      aria-label="Bulletin d'information communal" aria-hidden="true">
+      <div class="newsletter-modal-container">
+        <div class="newsletter-modal-toolbar no-print">
+          <button id="newsletter-close-btn" class="btn-action btn-outline">
+            ← Revenir à la carte
+          </button>
+          <div class="toolbar-actions">
+            <button id="newsletter-print-btn" class="btn-action btn-primary">
+              🖨️ Imprimer ou Enregistrer en PDF
+            </button>
+          </div>
+        </div>
+        <div id="newsletter-content" class="newsletter-modal-content"></div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Pied de page -->
+  <footer class="app-footer">
+    <div>
+      Projet citoyen indépendant — Données officielles issues de <strong>geo.api.gouv.fr</strong>
+    </div>
+    <div class="footer-links">
+      <a href="/mentions-legales.html" id="link-mentions">Mentions Légales</a>
+      <a href="/politique-confidentialite.html" id="link-rgpd">Confidentialité & RGPD</a>
+    </div>
+  </footer>
+
+  <!-- Fenêtre Modale Légale / RGPD -->
+  <div id="legal-overlay" class="newsletter-modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="legal-modal-title" aria-hidden="true">
+    <div class="newsletter-modal-container" style="max-width: 620px;">
+      <div class="newsletter-modal-toolbar">
+        <h2 id="legal-modal-title" style="font-size: 1.15rem; color: #0f172a;">Informations légales</h2>
+        <button id="legal-modal-close" class="close-btn" style="position: static; background: #e2e8f0; color: #0f172a;" aria-label="Fermer">✕</button>
+      </div>
+      <div id="legal-modal-body" class="newsletter-modal-content" style="padding: 1.5rem;"></div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+
+</html>
