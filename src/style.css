@@ -99,6 +99,73 @@ body {
   z-index: 1;
 }
 
+/* Navigation hiérarchique de la carte (Régions → Départements → Communes) */
+.map-nav {
+  position: absolute;
+  top: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  padding: 0.45rem 0.8rem;
+  backdrop-filter: blur(6px);
+}
+
+.map-nav.hidden {
+  display: none;
+}
+
+.map-nav-back {
+  border: none;
+  background: #eff6ff;
+  color: #1e40af;
+  font-weight: 600;
+  font-size: 0.82rem;
+  padding: 0.35rem 0.7rem;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.map-nav-back:hover {
+  background: #dbeafe;
+}
+
+.map-nav-back.hidden {
+  display: none;
+}
+
+.map-breadcrumb {
+  font-size: 0.85rem;
+  color: #334155;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.map-breadcrumb .crumb-sep {
+  color: #94a3b8;
+}
+
+.map-breadcrumb .crumb-active {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.map-status {
+  font-size: 0.78rem;
+  color: #64748b;
+  font-style: italic;
+  white-space: nowrap;
+}
+
 /* Floating Search Control */
 .search-container {
   position: absolute;
@@ -400,6 +467,11 @@ body {
   }
   .header-meta {
     display: none;
+  }
+  .map-nav {
+    top: 5.25rem;
+    max-width: calc(100vw - 2rem);
+    overflow-x: auto;
   }
   .commune-card-panel {
     top: auto;

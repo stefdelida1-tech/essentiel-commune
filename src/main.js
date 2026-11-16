@@ -46,11 +46,10 @@ async function loadCommunesData() {
     // Initialiser le moteur de recherche
     searchEngine = new CommuneSearchEngine(communes);
 
-    // Initialiser la carte Leaflet
+    // Initialiser la carte Leaflet (navigation Régions → Départements → Communes)
+    // Le clic sur une commune ouvre directement son bulletin municipal.
     mapExplorer = new FranceMapExplorer('map', (selectedCommune) => {
-      if (cardComponent) {
-        cardComponent.render(selectedCommune);
-      }
+      window.location.hash = `newsletter=${selectedCommune.code}`;
     });
     mapExplorer.init();
     mapExplorer.setCommunes(communes);
@@ -120,9 +119,8 @@ function renderSearchResults(results) {
       if (commune) {
         searchResults.style.display = 'none';
         searchInput.value = commune.nom;
-        if (mapExplorer) {
-          mapExplorer.selectCommune(commune, true);
-        }
+        // Ouvre directement le bulletin municipal de la commune
+        window.location.hash = `newsletter=${commune.code}`;
       }
     });
   });
@@ -141,7 +139,9 @@ function checkUrlHash() {
     const code = hash.replace('#commune=', '').trim();
     const commune = communes.find(c => c.code === code);
     if (commune) {
-      if (mapExplorer) mapExplorer.selectCommune(commune, true);
+      if (mapExplorer && mapExplorer.focusCommune) {
+        mapExplorer.focusCommune(commune);
+      }
       if (cardComponent) cardComponent.render(commune);
     }
   }

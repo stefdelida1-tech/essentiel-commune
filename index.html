@@ -72,6 +72,13 @@
       <div id="search-results" class="search-results" role="listbox" aria-label="Résultats de recherche"></div>
     </div>
 
+    <!-- Navigation hiérarchique de la carte : Régions → Départements → Communes -->
+    <div id="map-nav" class="map-nav hidden" aria-label="Navigation cartographique">
+      <button id="map-back-btn" class="map-nav-back hidden" type="button">← Retour</button>
+      <nav id="map-breadcrumb" class="map-breadcrumb" aria-label="Fil d'Ariane"></nav>
+      <span id="map-status" class="map-status" aria-live="polite"></span>
+    </div>
+
     <!-- Conteneur Carte Interactive Leaflet -->
     <div id="map" aria-label="Carte interactive des communes de France"></div>
 
