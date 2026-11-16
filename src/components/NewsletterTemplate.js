@@ -5,6 +5,105 @@
  */
 
 import { getCustomPublication } from '../services/publications.js';
+import { interpretAqi } from '../services/weather.js';
+
+function escapeHtml(str) {
+  return (str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function buildNewsSection(commune, news) {
+  const items = (news || [])
+    .filter(item => item && item.title)
+    .map(item => {
+      const title = escapeHtml(item.title);
+      const source = item.source ? ` <span style="color: #64748b; font-size: 0.82rem;">— ${escapeHtml(item.source)}</span>` : '';
+      const link = item.link
+        ? `<a href="${escapeHtml(item.link)}" target="_blank" rel="noopener noreferrer" style="color: #1e40af; text-decoration: none;"><strong>${title}</strong></a>${source}`
+        : `<strong>${title}</strong>${source}`;
+      return `<li>${link}</li>`;
+    })
+    .join('');
+
+  return {
+    tag: '📰 Actualités locales',
+    title: `Ce qui fait l’actualité de ${commune.nom}`,
+    content: `
+      <ul style="padding-left: 1.25rem; line-height: 1.6; display: flex; flex-direction: column; gap: 0.6rem;">
+        ${items}
+      </ul>
+      <p style="margin-top: 0.75rem; font-size: 0.82rem; color: #64748b; font-style: italic;">
+        Sources : fils d’actualité en ligne, sélectionnés pour ${escapeHtml(commune.nom)}.
+      </p>
+    `
+  };
+}
+
+function buildMeteoSection(commune) {
+  const meteo = commune.meteo;
+  const air = commune.qualiteAir;
+  if (!meteo) return null;
+
+  const aqiLabel = interpretAqi(air?.usAqi);
+  return {
+    tag: '🌤️ Météo & cadre de vie',
+    title: `Le temps qu’il fait à ${commune.nom}`,
+    content: `
+      <p style="line-height: 1.6;">
+        <strong style="font-size: 1.15rem;">${meteo.icon} ${meteo.temperature}°C</strong>
+        — ${meteo.label}. Aujourd’hui : min ${meteo.tempMin ?? '—'}° / max ${meteo.tempMax ?? '—'}°,
+        vent ${meteo.windspeed} km/h.
+      </p>
+      ${aqiLabel ? `
+      <p style="margin-top: 0.5rem; font-size: 0.9rem;">
+        🌿 <strong>Qualité de l’air :</strong> indice US AQI ${air.usAqi} (${aqiLabel})
+        ${air.pm25 !== null ? `— particules PM2.5 : ${air.pm25} µg/m³` : ''}.
+      </p>
+      ` : ''}
+    `
+  };
+}
+
+function buildRepèresSection(commune) {
+  const items = [];
+  if (commune.population) {
+    items.push(`<li>👥 <strong>Population :</strong> ${commune.population.toLocaleString('fr-FR')} habitants (estimation INSEE via geo.api.gouv.fr)</li>`);
+  }
+  if (commune.surfaceKm2) {
+    items.push(`<li>🗺️ <strong>Superficie :</strong> ${commune.surfaceKm2} km²</li>`);
+  }
+  if (commune.densite) {
+    items.push(`<li>📏 <strong>Densité :</strong> ${commune.densite.toLocaleString('fr-FR')} hab/km²</li>`);
+  }
+  if (commune.typologie) {
+    items.push(`<li>🏷️ <strong>Typologie :</strong> ${commune.typologie}</li>`);
+  }
+  const cps = commune.codesPostaux || [];
+  if (cps.length > 0) {
+    const liste = cps.slice(0, 3).join(', ') + (cps.length > 3 ? ` et ${cps.length - 3} autre(s)` : '');
+    items.push(`<li>📮 <strong>Codes postaux :</strong> ${liste} (${cps.length} au total)</li>`);
+  }
+  if (commune.epciNom) {
+    items.push(`<li>🤝 <strong>Intercommunalité :</strong> ${commune.epciNom}</li>`);
+  }
+  if (commune.maire?.maire) {
+    items.push(`<li>🏛️ <strong>Maire :</strong> ${commune.maire.maire}${commune.maire.mandat ? ` (mandat ${commune.maire.mandat})` : ''}</li>`);
+  }
+  if (items.length === 0) return null;
+
+  return {
+    tag: '📊 Repères du territoire',
+    title: `Les chiffres de ${commune.nom} en un coup d’œil`,
+    content: `
+      <ul style="padding-left: 1.25rem; line-height: 1.7; display: flex; flex-direction: column; gap: 0.35rem;">
+        ${items.join('')}
+      </ul>
+    `
+  };
+}
 
 export function generateCommuneBulletin(commune) {
   if (!commune) return null;
@@ -127,6 +226,21 @@ export function generateCommuneBulletin(commune) {
       `
     }
   ];
+
+  // Actualités réelles de la commune (flux RSS), insérées en tête de rubriques
+  if (commune.localNews && commune.localNews.length > 0) {
+    sections.splice(1, 0, buildNewsSection(commune, commune.localNews));
+  }
+
+  // Données territoriales réelles : météo/air et repères clés
+  const extraSections = [
+    buildMeteoSection(commune),
+    buildRepèresSection(commune)
+  ].filter(Boolean);
+  if (extraSections.length > 0) {
+    const insertAt = 1 + (commune.localNews?.length ? 1 : 0);
+    sections.splice(insertAt, 0, ...extraSections);
+  }
 
   if (commune.wikiExtract) {
     sections.push({

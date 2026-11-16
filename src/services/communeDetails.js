@@ -1,8 +1,12 @@
 /**
  * src/services/communeDetails.js
  * Service d'enrichissement dynamique des données communales
- * (geo.api.gouv.fr, Recherche Entreprises, Wikipedia Open API)
+ * (geo.api.gouv.fr, Recherche Entreprises, Wikipedia Open API,
+ *  Open-Meteo météo/qualité de l'air, annuaire-mairie.fr)
  */
+
+import { fetchWeather, fetchAirQuality } from './weather.js';
+import { fetchMairieInfo } from './annuaire.js';
 
 const detailsCache = new Map();
 
@@ -27,6 +31,20 @@ export async function fetchCommuneDetails(commune) {
     .catch(() => ({}));
 
   const [geoData, wikiData] = await Promise.all([geoPromise, wikiPromise]);
+
+  // Coordonnées de la commune (centre géographique officiel)
+  const centreCoords = geoData.centre?.coordinates; // [lng, lat]
+  const lng = typeof centreCoords?.[0] === 'number' ? centreCoords[0] : (commune.lng ?? commune.lon ?? null);
+  const lat = typeof centreCoords?.[1] === 'number' ? centreCoords[1] : (commune.lat ?? null);
+
+  // Requêtes satellites : météo, qualité de l'air, infos mairie
+  const meteoPromise = (lat !== null && lng !== null)
+    ? Promise.all([fetchWeather(lat, lng), fetchAirQuality(lat, lng)])
+        .then(([meteo, air]) => ({ meteo, air }))
+        .catch(() => null)
+    : Promise.resolve(null);
+  const mairiePromise = fetchMairieInfo({ ...commune, nom: geoData.nom || commune.nom }).catch(() => null);
+  const [satellite, mairieInfo] = await Promise.all([meteoPromise, mairiePromise]);
 
   // 3. Recherche de l'adresse officielle de la Mairie via son SIREN
   let mairieAdresse = null;
@@ -75,6 +93,11 @@ export async function fetchCommuneDetails(commune) {
     typologie,
     cadreDeVieType,
     mairieAdresse,
+    lat,
+    lng,
+    meteo: satellite?.meteo?.success ? satellite.meteo : null,
+    qualiteAir: satellite?.air?.success ? satellite.air : null,
+    maire: mairieInfo || null,
     wikiExtract: wikiData.extract || null,
     photoUrl: wikiData.thumbnail?.source || null,
     wikiUrl: wikiData.content_urls?.desktop?.page || null

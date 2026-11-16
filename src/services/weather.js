@@ -76,3 +76,44 @@ export async function fetchWeather(lat, lng) {
     };
   }
 }
+
+/**
+ * Qualité de l'air (indice US AQI + PM2.5) via Open-Meteo Air Quality.
+ * @returns {Promise<{success: boolean, usAqi: number|null, pm25: number|null}>}
+ */
+export async function fetchAirQuality(lat, lng) {
+  const fallback = { success: false, usAqi: null, pm25: null };
+  if (typeof lat !== 'number' || typeof lng !== 'number') return fallback;
+
+  const url = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat.toFixed(4)}&longitude=${lng.toFixed(4)}&current=us_aqi,pm2_5&timezone=Europe%2FParis`;
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    if (!res.ok) return fallback;
+
+    const data = await res.json();
+    return {
+      success: true,
+      usAqi: data.current?.us_aqi ?? null,
+      pm25: data.current?.pm2_5 ?? null
+    };
+  } catch {
+    clearTimeout(timeoutId);
+    return fallback;
+  }
+}
+
+/** Interprétation qualitative de l'indice US AQI. */
+export function interpretAqi(aqi) {
+  if (typeof aqi !== 'number') return null;
+  if (aqi <= 50) return 'Bon';
+  if (aqi <= 100) return 'Modéré';
+  if (aqi <= 150) return 'Sensible (groupes à risque)';
+  if (aqi <= 200) return 'Mauvais';
+  if (aqi <= 300) return 'Très mauvais';
+  return 'Dangereux';
+}
