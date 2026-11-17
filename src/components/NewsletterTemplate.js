@@ -162,9 +162,7 @@ export function generateCommuneBulletin(commune) {
       break;
   }
 
-  // Rubriques de l'édition, alignées sur le modèle éditorial de Bondy
-  // Chantiers : vraies actus locales si le flux thématique a répondu
-  // Liens d'actualités thématiques (flux RSS ciblés) pour les rubriques concernées
+  // Helper pour construire les liens d'actualités (max 3 par défaut)
   const buildLinks = (news, max = 3) => (news || [])
     .filter(item => item && item.title)
     .slice(0, max)
@@ -176,9 +174,26 @@ export function generateCommuneBulletin(commune) {
         : `<li><strong>${title}</strong>${source}</li>`;
     })
     .join('');
+
+  // Helper pour la section rappel citoyen (max 2 articles)
+  const buildSectionLinks = (news, max = 2) => (news || [])
+    .filter(item => item && item.title)
+    .slice(0, max)
+    .map(item => {
+      const title = escapeHtml(item.title);
+      const source = item.source ? ` <span style="color: #64748b; font-size: 0.82rem;">— ${escapeHtml(item.source)}</span>` : '';
+      return item.link
+        ? `<li><a href="${escapeHtml(item.link)}" target="_blank" rel="noopener noreferrer" style="color: #1e40af; text-decoration: none;"><strong>${title}</strong></a>${source}</li>`
+        : `<li><strong>${title}</strong>${source}</li>`;
+    })
+    .join('');
+
   const travauxLinks = buildLinks(commune.travauxNews);
   const sortiesLinks = buildLinks(commune.sortiesNews);
   const economieLinks = buildLinks(commune.economieNews);
+  const santeLinks = buildSectionLinks(commune.santeNews);
+  const seniorsLinks = buildSectionLinks(commune.seniorsNews);
+  const dechetsLinks = buildSectionLinks(commune.dechetsNews);
 
   const sections = [
     {
@@ -247,13 +262,6 @@ export function generateCommuneBulletin(commune) {
       title: 'Santé, sécurité et environnement',
       content: (() => {
         const alerts = commune.civicAlerts || {};
-        const pollenItems = (alerts.pollen || []).map(p => {
-          const title = escapeHtml(p.title);
-          const desc = escapeHtml(p.description);
-          const link = p.link ? `<a href="${escapeHtml(p.link)}" target="_blank" rel="noopener noreferrer" style="color: #1e40af; text-decoration: none;">En savoir plus</a>` : '';
-          return `<li>🌸 <strong>${title}</strong> ${desc ? `: ${desc}` : ''} ${link}</li>`;
-        }).join('');
-
         const meteoItems = (alerts.meteo || []).map(m => {
           const title = escapeHtml(m.title);
           const desc = escapeHtml(m.description);
@@ -264,14 +272,36 @@ export function generateCommuneBulletin(commune) {
         const airQuality = commune.airQuality;
         const airItem = airQuality ? `<li>🌬️ <strong>Qualité de l'air :</strong> ${airQuality.label} (AQI ${airQuality.aqi}) — ${airQuality.interpretation}</li>` : '';
 
+        const santeContent = santeLinks ? `
+          <ul style="padding-left: 1.25rem; line-height: 1.6; display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.75rem;">
+            ${santeLinks}
+          </ul>
+        ` : '';
+
+        const seniorsContent = seniorsLinks ? `
+          <ul style="padding-left: 1.25rem; line-height: 1.6; display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.75rem;">
+            ${seniorsLinks}
+          </ul>
+        ` : '';
+
+        const dechetsContent = dechetsLinks ? `
+          <ul style="padding-left: 1.25rem; line-height: 1.6; display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.75rem;">
+            ${dechetsLinks}
+          </ul>
+        ` : '';
+
         return `
-          ${pollenItems ? `<ul style="padding-left: 1.25rem; line-height: 1.6; display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.75rem;">${pollenItems}</ul>` : ''}
           ${meteoItems ? `<ul style="padding-left: 1.25rem; line-height: 1.6; display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.75rem;">${meteoItems}</ul>` : ''}
           <ul style="padding-left: 1.25rem; line-height: 1.6; display: flex; flex-direction: column; gap: 0.5rem;">
             ${airItem}
-            <li>🎗️ <strong>Santé et prévention :</strong> Les campagnes de dépistage et de sensibilisation (saisonnières ou thématiques) sont annoncées par la mairie et les structures de santé locales.</li>
-            <li>🎁 <strong>Seniors et familles :</strong> Les actions sociales et les dispositifs d'aide (CCAS, aides locales) peuvent être demandés auprès de la mairie ou des structures compétentes.</li>
-            <li>♻️ <strong>Tri et déchets :</strong> Respectez le calendrier de collecte et les consignes de tri de votre secteur pour un service plus efficace.</li>
+          </ul>
+          ${santeContent}
+          ${seniorsContent}
+          ${dechetsContent}
+          <ul style="padding-left: 1.25rem; line-height: 1.6; display: flex; flex-direction: column; gap: 0.5rem;">
+            ${!santeLinks ? `<li>🎗️ <strong>Santé et prévention :</strong> Les campagnes de dépistage et de sensibilisation (saisonnières ou thématiques) sont annoncées par la mairie et les structures de santé locales.</li>` : ''}
+            ${!seniorsLinks ? `<li>🎁 <strong>Seniors et familles :</strong> Les actions sociales et les dispositifs d'aide (CCAS, aides locales) peuvent être demandés auprès de la mairie ou des structures compétentes.</li>` : ''}
+            ${!dechetsLinks ? `<li>♻️ <strong>Tri et déchets :</strong> Respectez le calendrier de collecte et les consignes de tri de votre secteur pour un service plus efficace.</li>` : ''}
           </ul>
         `;
       })()

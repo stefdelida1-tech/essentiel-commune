@@ -6,9 +6,10 @@
  */
 
 import { fetchMairieInfo } from './annuaire.js';
-import { fetchAirQuality } from './weather.js';
+import { fetchAirQuality, interpretAqi } from './weather.js';
 
 const detailsCache = new Map();
+const CACHE_TTL_MS = 60 * 60 * 1000; // 1 heure
 const WIKIDATA_UA = { 'User-Agent': 'EssentielCommune/1.0 (contact@essentiel-commune.vercel.app)' };
 
 /** Recherche le gentilé de la commune via Wikidata (ex. "les Lyonnais"). */
@@ -40,8 +41,9 @@ export async function fetchCommuneDetails(commune) {
   if (!commune || !commune.code) return null;
 
   const code = commune.code;
-  if (detailsCache.has(code)) {
-    return detailsCache.get(code);
+  const cached = detailsCache.get(code);
+  if (cached && (Date.now() - cached.timestamp) < CACHE_TTL_MS) {
+    return cached.data;
   }
 
   // 1. Requête geo.api.gouv.fr détaillée (EPCI, département, région, surface, siren)
@@ -67,7 +69,16 @@ export async function fetchCommuneDetails(commune) {
   const mairiePromise = fetchMairieInfo({ ...commune, nom: geoData.nom || commune.nom }).catch(() => null);
   const gentilePromise = fetchGentile(geoData.nom || commune.nom).catch(() => null);
   const airQualityPromise = (lat && lng) ? fetchAirQuality(lat, lng).catch(() => null) : Promise.resolve(null);
-  const [mairieInfo, gentile, airQuality] = await Promise.all([mairiePromise, gentilePromise, airQualityPromise]);
+  const [mairieInfo, gentile, airQualityRaw] = await Promise.all([mairiePromise, gentilePromise, airQualityPromise]);
+
+  // Formater la qualité de l'air pour le template
+  const airQuality = (airQualityRaw?.success && typeof airQualityRaw.usAqi === 'number')
+    ? {
+        aqi: airQualityRaw.usAqi,
+        label: `AQI ${airQualityRaw.usAqi}`,
+        interpretation: interpretAqi(airQualityRaw.usAqi)
+      }
+    : null;
 
   // 3. Recherche de l'adresse officielle de la Mairie via son SIREN
   let mairieAdresse = null;
@@ -126,6 +137,6 @@ export async function fetchCommuneDetails(commune) {
     wikiUrl: wikiData.content_urls?.desktop?.page || null
   };
 
-  detailsCache.set(code, enriched);
+  detailsCache.set(code, { data: enriched, timestamp: Date.now() });
   return enriched;
 }

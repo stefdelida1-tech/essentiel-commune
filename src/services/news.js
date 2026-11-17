@@ -8,31 +8,14 @@
 const newsCache = new Map();
 const NEWS_TIMEOUT_MS = 8000;
 const MAX_ITEMS = 4;
+const CACHE_TTL_MS = 60 * 60 * 1000; // 1 heure
 
-// Alertes civiques : flux RSS publics (pollens RNSA, météo France)
+// Alertes civiques : API GeoAPI pour les vigilances météo par département
 const ALERT_SOURCES = {
-  pollen: {
-    name: 'Bulletin pollens',
-    url: 'https://www.pollens.fr/rss/france.xml',
-    regionMap: {
-      'Île-de-France': 'ile-de-france',
-      'Auvergne-Rhône-Alpes': 'auvergne-rhone-alpes',
-      'Hauts-de-France': 'hauts-de-france',
-      'Grand Est': 'grand-est',
-      'Normandie': 'normandie',
-      'Bretagne': 'bretagne',
-      'Pays de la Loire': 'pays-de-la-loire',
-      'Centre-Val de Loire': 'centre-val-de-loire',
-      'Bourgogne-Franche-Comté': 'bourgogne-franche-comte',
-      'Nouvelle-Aquitaine': 'nouvelle-aquitaine',
-      'Occitanie': 'occitanie',
-      'Provence-Alpes-Côte d\'Azur': 'provence-alpes-cote-d-azur',
-      'Corse': 'corse'
-    }
-  },
   meteo: {
     name: 'Alertes météo',
-    url: 'https://www.meteofrance.com/rss/vigilance_metropole.xml'
+    // GeoAPI endpoint pour la vigilance météo
+    url: (codeDepartement) => `https://geo.api.gouv.fr/departements/${codeDepartement}?fields=nom,codeRegion`
   }
 };
 
@@ -48,7 +31,10 @@ const NEWS_QUERIES = {
   general: (commune) => `"${commune.nom}" ${commune.codeDepartement || ''}`,
   travaux: (commune) => `"${commune.nom}" (travaux OR chantier OR voirie OR circulation OR stationnement OR déviation) ${commune.codeDepartement || ''}`,
   sorties: (commune) => `"${commune.nom}" (sortie OR spectacle OR festival OR manifestation OR animation OR exposition OR concert) ${commune.codeDepartement || ''}`,
-  economie: (commune) => `"${commune.nom}" (emploi OR entreprise OR commerce OR artisan OR association OR projet OR inauguration OR développement) ${commune.codeDepartement || ''}`
+  economie: (commune) => `"${commune.nom}" (emploi OR entreprise OR commerce OR artisan OR association OR projet OR inauguration OR développement) ${commune.codeDepartement || ''}`,
+  sante: (commune) => `(dépistage OR vaccination OR santé OR prévention OR campagne) ${commune.codeDepartement || ''}`,
+  seniors: (commune) => `(seniors OR personnes âgées OR aide sociale OR CCAS OR solidarité OR allocataire) ${commune.codeDepartement || ''}`,
+  dechets: (commune) => `(tri OR déchets OR collecte OR recyclage OR déchèterie OR verre OR compost) ${commune.codeDepartement || ''}`
 };
 
 async function fetchRssItems(commune, theme = 'general') {
@@ -80,36 +66,7 @@ async function fetchRssItems(commune, theme = 'general') {
 }
 
 /**
- * Récupère et parse un flux RSS public (proxy allorigins pour CORS).
- */
-async function fetchPublicRss(url) {
-  const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), NEWS_TIMEOUT_MS);
-  try {
-    const res = await fetch(proxyUrl, { signal: controller.signal });
-    if (!res.ok) return [];
-    const data = await res.json();
-    if (!data.contents) return [];
-    const doc = new DOMParser().parseFromString(data.contents, 'text/xml');
-    if (doc.querySelector('parsererror')) return [];
-
-    return Array.from(doc.querySelectorAll('item')).map(item => ({
-      title: item.querySelector('title')?.textContent?.trim() || '',
-      link: item.querySelector('link')?.textContent?.trim() || '',
-      pubDate: item.querySelector('pubDate')?.textContent?.trim() || '',
-      description: item.querySelector('description')?.textContent?.trim() || ''
-    }));
-  } catch (err) {
-    console.warn('Flux RSS indisponible:', url, err);
-    return [];
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-/**
- * Récupère les alertes civiques pour une commune (pollens, météo).
+ * Récupère les alertes civiques pour une commune (alertes météo via Google News).
  * @param {Object} commune - avec codeDepartement, regionNom
  * @returns {Promise<{pollen: string[], meteo: string[]}>}
  */
@@ -117,50 +74,47 @@ export async function fetchCivicAlerts(commune) {
   if (!commune) return { pollen: [], meteo: [] };
 
   const cacheKey = `alerts:${commune.code || commune.nom}`;
-  if (newsCache.has(cacheKey)) {
-    return newsCache.get(cacheKey);
+  const cached = newsCache.get(cacheKey);
+  if (cached && (Date.now() - cached.timestamp) < CACHE_TTL_MS) {
+    return cached.data;
   }
 
   const alerts = { pollen: [], meteo: [] };
 
-  // Pollens par région
-  if (commune.regionNom && ALERT_SOURCES.pollen.regionMap[commune.regionNom]) {
-    try {
-      const regionSlug = ALERT_SOURCES.pollen.regionMap[commune.regionNom];
-      const pollenUrl = `https://www.pollens.fr/rss/${regionSlug}.xml`;
-      const items = await fetchPublicRss(pollenUrl);
-      alerts.pollen = items.slice(0, 2).map(i => ({
-        title: i.title,
-        description: i.description?.replace(/<[^>]+>/g, '').substring(0, 200) || '',
-        link: i.link
-      }));
-    } catch (err) {
-      console.warn('Pollens indisponibles', err);
-    }
-  }
-
-  // Alertes météo par département (vigilance nationale filtrée par code dept)
+  // Alertes météo via Google News thématique
   if (commune.codeDepartement) {
     try {
-      const items = await fetchPublicRss(ALERT_SOURCES.meteo.url);
-      const deptStr = String(commune.codeDepartement);
-      alerts.meteo = items
-        .filter(item => {
-          const desc = normalize(item.description || '');
-          return desc.includes(deptStr) || desc.includes(`département ${deptStr}`);
-        })
-        .slice(0, 2)
-        .map(i => ({
-          title: i.title,
-          description: i.description?.replace(/<[^>]+>/g, '').substring(0, 200) || '',
-          link: i.link
-        }));
+      const query = encodeURIComponent(`alerte météo OR vigilance OR orage OR canicule OR neige OR vent ${commune.codeDepartement}`);
+      const url = `/gnrss/search?q=${query}&hl=fr&gl=FR&ceid=FR:fr`;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), NEWS_TIMEOUT_MS);
+      try {
+        const res = await fetch(url, { signal: controller.signal });
+        if (res.ok) {
+          const xml = await res.text();
+          const doc = new DOMParser().parseFromString(xml, 'text/xml');
+          if (!doc.querySelector('parsererror')) {
+            const items = Array.from(doc.querySelectorAll('item')).map(item => ({
+              title: item.querySelector('title')?.textContent?.trim() || '',
+              link: item.querySelector('link')?.textContent?.trim() || '',
+              description: item.querySelector('description')?.textContent?.trim() || ''
+            }));
+            alerts.meteo = items.slice(0, 2).map(i => ({
+              title: i.title,
+              description: i.description?.replace(/<[^>]+>/g, '').substring(0, 200) || '',
+              link: i.link
+            }));
+          }
+        }
+      } finally {
+        clearTimeout(timer);
+      }
     } catch (err) {
       console.warn('Alertes météo indisponibles', err);
     }
   }
 
-  newsCache.set(cacheKey, alerts);
+  newsCache.set(cacheKey, { data: alerts, timestamp: Date.now() });
   return alerts;
 }
 
@@ -173,8 +127,9 @@ export async function fetchCommuneNews(commune, theme = 'general') {
   if (!commune || !commune.nom) return [];
 
   const cacheKey = `${commune.code || commune.nom}:${theme}`;
-  if (newsCache.has(cacheKey)) {
-    return newsCache.get(cacheKey);
+  const cached = newsCache.get(cacheKey);
+  if (cached && (Date.now() - cached.timestamp) < CACHE_TTL_MS) {
+    return cached.data;
   }
 
   let items = [];
@@ -206,6 +161,6 @@ export async function fetchCommuneNews(commune, theme = 'general') {
     console.warn('Actualités indisponibles pour', commune.nom, err);
   }
 
-  newsCache.set(cacheKey, items);
+  newsCache.set(cacheKey, { data: items, timestamp: Date.now() });
   return items;
 }
