@@ -391,6 +391,25 @@ export function renderBulletinHtml(bulletin) {
             </a>
           </div>
         ` : ''}
+
+        <!-- Boutons de partage -->
+        <div style="margin-top: 1rem; display: flex; gap: 0.5rem; flex-wrap: wrap;" class="no-print">
+          <button onclick="window.open('https://twitter.com/intent/tweet?text=🏛️ ' + encodeURIComponent('${bulletin.title}') + '&url=' + encodeURIComponent(window.location.href), '_blank')" style="padding: 0.4rem 0.8rem; border: 1px solid #1da1f2; background: #fff; color: #1da1f2; border-radius: 6px; cursor: pointer; font-size: 0.85rem; display: flex; align-items: center; gap: 0.3rem;">
+            🐦 Twitter
+          </button>
+          <button onclick="window.open('https://www.facebook.com/sharer/sharer.php?u=' + encodeURIComponent(window.location.href), '_blank')" style="padding: 0.4rem 0.8rem; border: 1px solid #1877f2; background: #fff; color: #1877f2; border-radius: 6px; cursor: pointer; font-size: 0.85rem; display: flex; align-items: center; gap: 0.3rem;">
+            📘 Facebook
+          </button>
+          <button onclick="window.open('https://www.linkedin.com/sharing/share-offsite/?url=' + encodeURIComponent(window.location.href), '_blank')" style="padding: 0.4rem 0.8rem; border: 1px solid #0a66c2; background: #fff; color: #0a66c2; border-radius: 6px; cursor: pointer; font-size: 0.85rem; display: flex; align-items: center; gap: 0.3rem;">
+            💼 LinkedIn
+          </button>
+          <button onclick="window.open('https://wa.me/?text=' + encodeURIComponent('🏛️ ' + '${bulletin.title}' + ' : ' + window.location.href), '_blank')" style="padding: 0.4rem 0.8rem; border: 1px solid #25d366; background: #fff; color: #25d366; border-radius: 6px; cursor: pointer; font-size: 0.85rem; display: flex; align-items: center; gap: 0.3rem;">
+            💬 WhatsApp
+          </button>
+          <button onclick="navigator.clipboard.writeText(window.location.href); this.textContent='✅ Copié !'; setTimeout(() => this.textContent='🔗 Copier le lien', 2000);" style="padding: 0.4rem 0.8rem; border: 1px solid #64748b; background: #fff; color: #64748b; border-radius: 6px; cursor: pointer; font-size: 0.85rem; display: flex; align-items: center; gap: 0.3rem;">
+            🔗 Copier le lien
+          </button>
+        </div>
       </header>
 
       ${bulletin.editorial ? `
