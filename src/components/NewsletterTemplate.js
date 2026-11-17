@@ -101,6 +101,12 @@ export function generateCommuneBulletin(commune) {
   // 1. Vérifier si une publication officielle sur-mesure existe (ex: Bondy)
   const customPub = getCustomPublication(commune.code);
   if (customPub) {
+    // Compteur de visites pour les publications sur-mesure aussi
+    const visitCountKey = `visits_${commune.code}`;
+    const currentVisits = parseInt(localStorage.getItem(visitCountKey) || '0', 10);
+    const newVisits = currentVisits + 1;
+    localStorage.setItem(visitCountKey, newVisits.toString());
+
     return {
       isCustom: true,
       communeName: commune.nom,
@@ -114,6 +120,7 @@ export function generateCommuneBulletin(commune) {
       photoUrl: commune.photoUrl || null,
       sections: injectDynamicSections(customPub.sections || [], commune),
       chiffreSemaine: customPub.chiffreSemaine,
+      visitCount: newVisits,
       pratique: {
         urgences: 'SAMU : 15 | Pompiers : 18 | Police/Gendarmerie : 17 | Urgence Européenne : 112',
         contactMairie: commune.mairieAdresse ? `Mairie : ${commune.mairieAdresse}` : `Hôtel de Ville de ${commune.nom}`,
@@ -319,6 +326,12 @@ export function generateCommuneBulletin(commune) {
     });
   }
 
+  // Compteur de visites (localStorage côté client)
+  const visitCountKey = `visits_${commune.code}`;
+  const currentVisits = parseInt(localStorage.getItem(visitCountKey) || '0', 10);
+  const newVisits = currentVisits + 1;
+  localStorage.setItem(visitCountKey, newVisits.toString());
+
   return {
     isCustom: false,
     communeName: commune.nom,
@@ -328,6 +341,7 @@ export function generateCommuneBulletin(commune) {
     title: `L'Essentiel de ${commune.nom}`,
     subtitle: introSubtitle,
     photoUrl: commune.photoUrl || null,
+    visitCount: newVisits,
     editorial: {
       title: `Le mot du territoire`,
       content: editorialText
@@ -337,6 +351,7 @@ export function generateCommuneBulletin(commune) {
       chiffre: chiffreCle,
       texte: chiffreDesc
     },
+    visitCount: newVisits,
     pratique: {
       urgences: 'SAMU : 15 | Pompiers : 18 | Police/Gendarmerie : 17 | Urgence Européenne : 112',
       contactMairie: commune.mairieAdresse ? `Mairie : ${commune.mairieAdresse}` : `Mairie de ${commune.nom} (${commune.codesPostaux?.[0] || commune.codeDepartement})`,
@@ -357,6 +372,7 @@ export function renderBulletinHtml(bulletin) {
           <span>RÉPUBLIQUE FRANÇAISE</span>
           <span>${bulletin.department}</span>
           <span>ÉDITION : ${bulletin.editionDate}</span>
+          ${bulletin.visitCount ? `<span style="background: #dbeafe; color: #1e40af; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">👁️ ${bulletin.visitCount} consultation${bulletin.visitCount > 1 ? 's' : ''}</span>` : ''}
         </div>
         
         ${bulletin.photoUrl ? `
