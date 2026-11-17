@@ -95,8 +95,8 @@ export class FranceMapExplorer {
   init() {
     this.map = L.map(this.containerId, {
       center: [46.6, 2.5],
-      zoom: 6,
-      minZoom: 6,
+      zoom: 5,
+      minZoom: 5,
       maxZoom: 18,
       zoomControl: false
     });
@@ -216,7 +216,7 @@ export class FranceMapExplorer {
     });
 
     if (bounds.length > 0) {
-      this.map.fitBounds(mergeBounds(bounds), { padding: [20, 20] });
+      this.map.fitBounds(mergeBounds(bounds), { padding: [40, 40] });
     }
     this.setStatus(null);
     this.updateNavUI();
