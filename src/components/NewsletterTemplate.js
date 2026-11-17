@@ -5,7 +5,6 @@
  */
 
 import { getCustomPublication } from '../services/publications.js';
-import { interpretAqi } from '../services/weather.js';
 
 function escapeHtml(str) {
   return (str || '')
@@ -42,31 +41,6 @@ function buildNewsSection(commune, news) {
   };
 }
 
-function buildMeteoSection(commune) {
-  const meteo = commune.meteo;
-  const air = commune.qualiteAir;
-  if (!meteo) return null;
-
-  const aqiLabel = interpretAqi(air?.usAqi);
-  return {
-    tag: '🌤️ Météo & cadre de vie',
-    title: `Le temps qu’il fait à ${commune.nom}`,
-    content: `
-      <p style="line-height: 1.6;">
-        <strong style="font-size: 1.15rem;">${meteo.icon} ${meteo.temperature}°C</strong>
-        — ${meteo.label}. Aujourd’hui : min ${meteo.tempMin ?? '—'}° / max ${meteo.tempMax ?? '—'}°,
-        vent ${meteo.windspeed} km/h.
-      </p>
-      ${aqiLabel ? `
-      <p style="margin-top: 0.5rem; font-size: 0.9rem;">
-        🌿 <strong>Qualité de l’air :</strong> indice US AQI ${air.usAqi} (${aqiLabel})
-        ${air.pm25 !== null ? `— particules PM2.5 : ${air.pm25} µg/m³` : ''}.
-      </p>
-      ` : ''}
-    `
-  };
-}
-
 function buildRepèresSection(commune) {
   const items = [];
   if (commune.population) {
@@ -80,6 +54,9 @@ function buildRepèresSection(commune) {
   }
   if (commune.typologie) {
     items.push(`<li>🏷️ <strong>Typologie :</strong> ${commune.typologie}</li>`);
+  }
+  if (commune.gentile) {
+    items.push(`<li>🗣️ <strong>Gentilé :</strong> ${commune.gentile}</li>`);
   }
   const cps = commune.codesPostaux || [];
   if (cps.length > 0) {
@@ -105,6 +82,19 @@ function buildRepèresSection(commune) {
   };
 }
 
+/** Insère les rubriques dynamiques (actualités RSS + repères territoire) après la 1ʳᵉ section. */
+function injectDynamicSections(sections, commune) {
+  const result = [...sections];
+  if (commune.localNews && commune.localNews.length > 0) {
+    result.splice(1, 0, buildNewsSection(commune, commune.localNews));
+  }
+  const repèresSection = buildRepèresSection(commune);
+  if (repèresSection) {
+    result.splice(1 + (commune.localNews?.length ? 1 : 0), 0, repèresSection);
+  }
+  return result;
+}
+
 export function generateCommuneBulletin(commune) {
   if (!commune) return null;
 
@@ -122,11 +112,13 @@ export function generateCommuneBulletin(commune) {
       substackUrl: customPub.substackUrl,
       author: customPub.author,
       photoUrl: commune.photoUrl || null,
-      sections: customPub.sections,
+      sections: injectDynamicSections(customPub.sections || [], commune),
       chiffreSemaine: customPub.chiffreSemaine,
       pratique: {
         urgences: 'SAMU : 15 | Pompiers : 18 | Police/Gendarmerie : 17 | Urgence Européenne : 112',
-        contactMairie: commune.mairieAdresse ? `Mairie : ${commune.mairieAdresse}` : `Hôtel de Ville de ${commune.nom}`
+        contactMairie: commune.mairieAdresse ? `Mairie : ${commune.mairieAdresse}` : `Hôtel de Ville de ${commune.nom}`,
+        telephone: commune.mairie?.telephone || null,
+        horaires: commune.mairie?.horaires || null
       }
     };
   }
@@ -171,11 +163,35 @@ export function generateCommuneBulletin(commune) {
   }
 
   // Rubriques de l'édition, alignées sur le modèle éditorial de Bondy
+  // Chantiers : vraies actus locales si le flux thématique a répondu
+  // Liens d'actualités thématiques (flux RSS ciblés) pour les rubriques concernées
+  const buildLinks = (news, max = 3) => (news || [])
+    .filter(item => item && item.title)
+    .slice(0, max)
+    .map(item => {
+      const title = escapeHtml(item.title);
+      const source = item.source ? ` <span style="color: #64748b; font-size: 0.82rem;">— ${escapeHtml(item.source)}</span>` : '';
+      return item.link
+        ? `<li><a href="${escapeHtml(item.link)}" target="_blank" rel="noopener noreferrer" style="color: #1e40af; text-decoration: none;"><strong>${title}</strong></a>${source}</li>`
+        : `<li><strong>${title}</strong>${source}</li>`;
+    })
+    .join('');
+  const travauxLinks = buildLinks(commune.travauxNews);
+  const sortiesLinks = buildLinks(commune.sortiesNews);
+  const economieLinks = buildLinks(commune.economieNews);
+
   const sections = [
     {
       tag: '🚨 Info Travaux & Circulation',
       title: 'Chantiers et mobilités à anticiper',
-      content: `
+      content: travauxLinks ? `
+        <ul style="padding-left: 1.25rem; line-height: 1.6; display: flex; flex-direction: column; gap: 0.5rem;">
+          ${travauxLinks}
+        </ul>
+        <p style="margin-top: 0.75rem; background: #eff6ff; padding: 0.6rem; border-radius: 6px; font-size: 0.88rem;">
+          🚗 <strong>Astuce mobilité :</strong> Privilégiez les modes de déplacement actifs et le covoiturage pour les courts trajets en centre-bourg.
+        </p>
+      ` : `
         <ul style="padding-left: 1.25rem; line-height: 1.6; display: flex; flex-direction: column; gap: 0.5rem;">
           <li><strong>Voiries et domaine public :</strong> Les opérations d’entretien et de réfection se poursuivent sur la commune de ${commune.nom}. Respectez la signalisation temporaire et adaptez vos trajets aux déviations éventuelles.</li>
           <li><strong>Stationnement :</strong> Des fermetures temporaires de stationnement peuvent être mises en place autour des chantiers en cours. Renseignez-vous en mairie avant vos déplacements.</li>
@@ -189,7 +205,14 @@ export function generateCommuneBulletin(commune) {
     {
       tag: `📅 Que faire à ${commune.nom} ?`,
       title: 'Sorties, sports et animations de la semaine',
-      content: `
+      content: sortiesLinks ? `
+        <ul style="padding-left: 1.25rem; line-height: 1.6; display: flex; flex-direction: column; gap: 0.6rem;">
+          ${sortiesLinks}
+        </ul>
+        <p style="margin-top: 0.75rem; font-size: 0.82rem; color: #64748b; font-style: italic;">
+          📆 Pour l’agenda complet : site de la mairie et offices de tourisme.
+        </p>
+      ` : `
         <ul style="padding-left: 1.25rem; line-height: 1.6; display: flex; flex-direction: column; gap: 0.6rem;">
           <li>📅 <strong>Agenda municipal :</strong> Consultez le site de la mairie et les supports d’information pour les animations, expositions et rencontres de la semaine.</li>
           <li>🏛️ <strong>Vie associative :</strong> Clubs sportifs, comités des fêtes et associations culturelles animent la vie locale. Contactez la mairie pour proposer une initiative ou une sortie.</li>
@@ -201,6 +224,11 @@ export function generateCommuneBulletin(commune) {
       tag: '💼 Vie locale & Initiatives',
       title: 'Démarches, accompagnement et projets locaux',
       content: `
+        ${economieLinks ? `
+        <ul style="padding-left: 1.25rem; line-height: 1.6; display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.75rem;">
+          ${economieLinks}
+        </ul>
+        ` : ''}
         <p style="line-height: 1.6; margin-bottom: 0.5rem;">
           L’accueil citoyen de la mairie vous reçoit pour vos formalités (${mairie}). Les services publics sont également accessibles via la Maison France Services et le portail de démarches en ligne. Artisans, commerçants et associations de ${commune.nom} : vous pouvez transmettre vos actualités pour les prochaines éditions.
         </p>
@@ -227,23 +255,11 @@ export function generateCommuneBulletin(commune) {
     }
   ];
 
-  // Actualités réelles de la commune (flux RSS), insérées en tête de rubriques
-  if (commune.localNews && commune.localNews.length > 0) {
-    sections.splice(1, 0, buildNewsSection(commune, commune.localNews));
-  }
-
-  // Données territoriales réelles : météo/air et repères clés
-  const extraSections = [
-    buildMeteoSection(commune),
-    buildRepèresSection(commune)
-  ].filter(Boolean);
-  if (extraSections.length > 0) {
-    const insertAt = 1 + (commune.localNews?.length ? 1 : 0);
-    sections.splice(insertAt, 0, ...extraSections);
-  }
+  // Rubriques dynamiques : actualités RSS + repères territoire
+  const finalSections = injectDynamicSections(sections, commune);
 
   if (commune.wikiExtract) {
-    sections.push({
+    finalSections.push({
       tag: '🏛️ Histoire & Patrimoine',
       title: `Découverte et mémoire de ${commune.nom}`,
       content: `<p style="line-height: 1.6;">${commune.wikiExtract}</p>`
@@ -263,14 +279,16 @@ export function generateCommuneBulletin(commune) {
       title: `Le mot du territoire`,
       content: editorialText
     },
-    sections,
+    sections: finalSections,
     chiffreSemaine: {
       chiffre: chiffreCle,
       texte: chiffreDesc
     },
     pratique: {
       urgences: 'SAMU : 15 | Pompiers : 18 | Police/Gendarmerie : 17 | Urgence Européenne : 112',
-      contactMairie: commune.mairieAdresse ? `Mairie : ${commune.mairieAdresse}` : `Mairie de ${commune.nom} (${commune.codesPostaux?.[0] || commune.codeDepartement})`
+      contactMairie: commune.mairieAdresse ? `Mairie : ${commune.mairieAdresse}` : `Mairie de ${commune.nom} (${commune.codesPostaux?.[0] || commune.codeDepartement})`,
+      telephone: commune.mairie?.telephone || null,
+      horaires: commune.mairie?.horaires || null
     }
   };
 }
@@ -347,6 +365,16 @@ export function renderBulletinHtml(bulletin) {
         <div class="footer-contacts">
           <strong>${bulletin.pratique.contactMairie}</strong>
         </div>
+        ${bulletin.pratique.telephone ? `
+        <div class="footer-contacts" style="margin-top: 0.25rem;">
+          📞 <strong>Téléphone :</strong> ${bulletin.pratique.telephone}
+        </div>
+        ` : ''}
+        ${bulletin.pratique.horaires ? `
+        <div class="footer-contacts" style="margin-top: 0.25rem; font-size: 0.85rem;">
+          🕐 <strong>Horaires d’ouverture :</strong> ${bulletin.pratique.horaires}
+        </div>
+        ` : ''}
         <div class="footer-contacts" style="margin-top: 0.25rem;">
           <strong>Services d'Urgence :</strong> ${bulletin.pratique.urgences}
         </div>

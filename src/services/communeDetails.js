@@ -2,13 +2,38 @@
  * src/services/communeDetails.js
  * Service d'enrichissement dynamique des données communales
  * (geo.api.gouv.fr, Recherche Entreprises, Wikipedia Open API,
- *  Open-Meteo météo/qualité de l'air, annuaire-mairie.fr)
+ *  annuaire-mairie.fr, Wikidata)
  */
 
-import { fetchWeather, fetchAirQuality } from './weather.js';
 import { fetchMairieInfo } from './annuaire.js';
 
 const detailsCache = new Map();
+const WIKIDATA_UA = { 'User-Agent': 'EssentielCommune/1.0 (contact@essentiel-commune.vercel.app)' };
+
+/** Recherche le gentilé de la commune via Wikidata (ex. "les Lyonnais"). */
+async function fetchGentile(nom) {
+  try {
+    const searchUrl = `https://www.wikidata.org/w/api.php?action=wbsearchentities&search=${encodeURIComponent(nom)}&language=fr&format=json&limit=5&type=item`;
+    const searchRes = await fetch(searchUrl, { headers: WIKIDATA_UA });
+    if (!searchRes.ok) return null;
+    const searchData = await searchRes.json();
+    const hit = (searchData.search || []).find(e =>
+      /commune|ville|municipalit|village/i.test(e.description || '')
+    ) || searchData.search?.[0];
+    if (!hit?.id) return null;
+
+    const entityUrl = `https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${hit.id}&props=claims&format=json`;
+    const entityRes = await fetch(entityUrl, { headers: WIKIDATA_UA });
+    if (!entityRes.ok) return null;
+    const entityData = await entityRes.json();
+    // P1549 = gentilé, stocké en monolingualtext avec qualifier de langue
+    const claims = entityData.entities?.[hit.id]?.claims?.P1549 || [];
+    const frClaim = claims.find(c => c.mainsnak?.datavalue?.value?.language === 'fr');
+    return frClaim?.mainsnak?.datavalue?.value?.text || null;
+  } catch {
+    return null;
+  }
+}
 
 export async function fetchCommuneDetails(commune) {
   if (!commune || !commune.code) return null;
@@ -37,14 +62,10 @@ export async function fetchCommuneDetails(commune) {
   const lng = typeof centreCoords?.[0] === 'number' ? centreCoords[0] : (commune.lng ?? commune.lon ?? null);
   const lat = typeof centreCoords?.[1] === 'number' ? centreCoords[1] : (commune.lat ?? null);
 
-  // Requêtes satellites : météo, qualité de l'air, infos mairie
-  const meteoPromise = (lat !== null && lng !== null)
-    ? Promise.all([fetchWeather(lat, lng), fetchAirQuality(lat, lng)])
-        .then(([meteo, air]) => ({ meteo, air }))
-        .catch(() => null)
-    : Promise.resolve(null);
+  // Requêtes satellites : infos mairie (annuaire-mairie.fr) + gentilé (Wikidata)
   const mairiePromise = fetchMairieInfo({ ...commune, nom: geoData.nom || commune.nom }).catch(() => null);
-  const [satellite, mairieInfo] = await Promise.all([meteoPromise, mairiePromise]);
+  const gentilePromise = fetchGentile(geoData.nom || commune.nom).catch(() => null);
+  const [mairieInfo, gentile] = await Promise.all([mairiePromise, gentilePromise]);
 
   // 3. Recherche de l'adresse officielle de la Mairie via son SIREN
   let mairieAdresse = null;
@@ -95,9 +116,8 @@ export async function fetchCommuneDetails(commune) {
     mairieAdresse,
     lat,
     lng,
-    meteo: satellite?.meteo?.success ? satellite.meteo : null,
-    qualiteAir: satellite?.air?.success ? satellite.air : null,
-    maire: mairieInfo || null,
+    mairie: mairieInfo || null,
+    gentile,
     wikiExtract: wikiData.extract || null,
     photoUrl: wikiData.thumbnail?.source || null,
     wikiUrl: wikiData.content_urls?.desktop?.page || null

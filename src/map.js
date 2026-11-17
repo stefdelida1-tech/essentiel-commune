@@ -55,6 +55,13 @@ async function fetchJson(url) {
   }
 }
 
+/** Fusionne un tableau de L.LatLngBounds en une seule bounds. */
+function mergeBounds(bounds) {
+  const merged = L.latLngBounds();
+  bounds.forEach(b => merged.extend(b));
+  return merged;
+}
+
 export class FranceMapExplorer {
   constructor(containerId, onSelectCommune) {
     this.containerId = containerId;
@@ -101,13 +108,24 @@ export class FranceMapExplorer {
       maxZoom: 19
     }).addTo(this.map);
 
-    this.canvasRenderer = L.canvas({ padding: 0.5 });
+    // tolerance : marge de détection des clics sur les marqueurs canvas
+    this.canvasRenderer = L.canvas({ padding: 0.5, tolerance: 12 });
     this.regionsLayer = L.layerGroup().addTo(this.map);
     this.deptLayer = L.layerGroup().addTo(this.map);
     this.communeLayer = L.layerGroup().addTo(this.map);
 
     this.updateNavUI();
     this.loadRegions();
+
+    // Diagnostic : la carte doit avoir une taille non nulle pour s'afficher
+    const checkSize = () => {
+      const size = this.map.getSize();
+      if (size.x === 0 || size.y === 0) {
+        this.setStatus('⚠️ Carte sans dimension — problème de mise en page.');
+      }
+    };
+    requestAnimationFrame(checkSize);
+    setTimeout(checkSize, 1500);
 
     return this;
   }
@@ -127,7 +145,13 @@ export class FranceMapExplorer {
       return;
     }
     this.regionsData = geojson;
-    this.renderRegions();
+    try {
+      this.renderRegions();
+      this.setStatus(`${geojson.features.length} régions affichées — cliquez pour explorer.`);
+    } catch (err) {
+      this.setStatus('Erreur rendu carte : ' + err.message);
+      console.error(err);
+    }
   }
 
   async getDeptGeoJson(code, nom) {
@@ -192,7 +216,7 @@ export class FranceMapExplorer {
     });
 
     if (bounds.length > 0) {
-      this.map.fitBounds(L.latLngBounds(bounds), { padding: [20, 20] });
+      this.map.fitBounds(mergeBounds(bounds), { padding: [20, 20] });
     }
     this.setStatus(null);
     this.updateNavUI();
@@ -214,20 +238,22 @@ export class FranceMapExplorer {
     }
 
     const bounds = [];
+    let rendered = 0;
     await Promise.all(depts.map(async (dept) => {
       const geojson = await this.getDeptGeoJson(dept.code, dept.nom);
       if (!geojson) return;
       this.addDeptPath(geojson, dept, bounds);
+      rendered++;
     }));
 
     if (bounds.length > 0) {
-      this.map.flyToBounds(L.latLngBounds(bounds), { padding: [20, 20], duration: 0.8 });
+      this.map.flyToBounds(mergeBounds(bounds), { padding: [20, 20], duration: 0.8 });
     }
-    this.setStatus(null);
+    this.setStatus(`${rendered}/${depts.length} départements affichés — cliquez sur l'un d'eux.`);
     this.updateNavUI();
   }
 
-  addDeptPath(geojson, dept, bounds) {
+  addDeptPath(geojson, dept, bounds, interactive = true) {
     const layer = L.geoJSON(geojson, {
       style: {
         color: '#1d4ed8',
@@ -237,12 +263,20 @@ export class FranceMapExplorer {
       }
     });
 
-    layer.eachLayer(path => {
-      path.bindTooltip(`<strong>${dept.nom}</strong> (${dept.code})<br>Cliquez pour voir les communes`, { sticky: true });
-      path.on('mouseover', () => path.setStyle({ fillOpacity: 0.5, weight: 2 }));
-      path.on('mouseout', () => path.setStyle({ fillOpacity: 0.22, weight: 1.2 }));
-      path.on('click', () => this.openDepartment(dept));
-    });
+    if (interactive) {
+      layer.eachLayer(path => {
+        path.bindTooltip(`<strong>${dept.nom}</strong> (${dept.code})<br>Cliquez pour voir les communes`, { sticky: true });
+        path.on('mouseover', () => path.setStyle({ fillOpacity: 0.5, weight: 2 }));
+        path.on('mouseout', () => path.setStyle({ fillOpacity: 0.22, weight: 1.2 }));
+        path.on('click', () => {
+          this.setStatus(`Département ${dept.nom} sélectionné…`);
+          this.openDepartment(dept);
+        });
+      });
+    } else {
+      // Contour décoratif au niveau commune : pas de tooltip ni de clic
+      layer.eachLayer(path => { path.options.interactive = false; });
+    }
 
     this.deptLayer.addLayer(layer);
     if (bounds) bounds.push(layer.getBounds());
@@ -250,27 +284,37 @@ export class FranceMapExplorer {
   }
 
   async openDepartment(dept) {
-    this.currentDept = dept;
-    this.level = 'commune';
-    this.clearOverlays();
-    this.setStatus(`Chargement des communes de ${dept.nom}…`);
-    this.updateNavUI();
+    try {
+      this.currentDept = dept;
+      this.level = 'commune';
+      this.clearOverlays();
+      this.setStatus(`Chargement des communes de ${dept.nom}…`);
+      this.updateNavUI();
 
-    const geojson = await this.getDeptGeoJson(dept.code, dept.nom);
-    if (geojson) {
-      const outline = this.addDeptPath(geojson, dept, null);
-      outline.eachLayer(path => path.setStyle({
-        color: '#0f172a',
-        weight: 2,
-        fillColor: '#93c5fd',
-        fillOpacity: 0.15
-      }));
-      this.map.flyToBounds(outline.getBounds(), { padding: [30, 30], duration: 0.8 });
+      const geojson = await this.getDeptGeoJson(dept.code, dept.nom);
+      if (geojson) {
+        const outline = this.addDeptPath(geojson, dept, null, false);
+        outline.eachLayer(path => path.setStyle({
+          color: '#0f172a',
+          weight: 2,
+          fillColor: '#93c5fd',
+          fillOpacity: 0.15
+        }));
+        this.map.flyToBounds(outline.getBounds(), { padding: [30, 30], duration: 0.8 });
+      } else {
+        this.setStatus(`Contour ${dept.nom} indisponible — communes seules.`);
+      }
+
+      this.renderDeptCommunes();
+      const count = this.communes.filter(c => c.codeDepartement === this.currentDept.code).length;
+      this.setStatus(count > 0
+        ? `${count} communes — cliquez sur un point pour ouvrir son bulletin.`
+        : 'Aucune commune trouvée pour ce département (code ' + this.currentDept.code + ').');
+      this.updateNavUI();
+    } catch (err) {
+      this.setStatus('Erreur département : ' + err.message);
+      console.error(err);
     }
-
-    this.renderDeptCommunes();
-    this.setStatus(null);
-    this.updateNavUI();
   }
 
   renderDeptCommunes() {
@@ -285,9 +329,9 @@ export class FranceMapExplorer {
       const coords = c.centre?.coordinates;
       if (!coords) return;
       const [lng, lat] = coords;
+      // Renderer SVG (DOM) : clics garantis, contrairement au canvas
       const marker = L.circleMarker([lat, lng], {
-        renderer: this.canvasRenderer,
-        radius: 5,
+        radius: 7,
         fillColor: '#1d70b8',
         color: '#ffffff',
         weight: 1.5,
@@ -295,6 +339,7 @@ export class FranceMapExplorer {
       });
       marker.bindTooltip(`<strong>${c.nom}</strong><br>${c.population?.toLocaleString('fr-FR') || ''} hab. — cliquez pour le bulletin`, { direction: 'top', offset: [0, -4] });
       marker.on('click', () => {
+        this.setStatus(`Ouverture du bulletin de ${c.nom}…`);
         if (typeof this.onSelectCommune === 'function') this.onSelectCommune(c);
       });
       this.communeLayer.addLayer(marker);
@@ -325,7 +370,8 @@ export class FranceMapExplorer {
     await this.ensureRegionsLoaded();
 
     // Ouvrir le département de la commune pour afficher son contour
-    if (commune.codeDepartement) {
+    // (limitée à la France métropolitaine : codes département à 2 caractères)
+    if (commune.codeDepartement && String(commune.codeDepartement).length === 2) {
       const deptInfo = await this.getDeptInfo(commune.codeDepartement);
       if (deptInfo) {
         const regionFeature = this.regionsData?.features.find(
@@ -367,7 +413,6 @@ export class FranceMapExplorer {
   }
 
   updateNavUI() {
-    if (this.navEl) this.navEl.classList.toggle('hidden', this.level === 'region' && !this.currentRegion);
     if (this.backBtn) this.backBtn.classList.toggle('hidden', this.level === 'region');
 
     if (this.breadcrumbEl) {

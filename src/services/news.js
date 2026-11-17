@@ -15,9 +15,17 @@ function normalize(str) {
     .replace(/[̀-ͯ]/g, '');
 }
 
-async function fetchRssItems(commune) {
-  const departement = commune.codeDepartement ? ` ${commune.codeDepartement}` : '';
-  const query = encodeURIComponent(`"${commune.nom}"${departement}`);
+// Requêtes thématiques : 'general' = actualités locales, 'travaux' = chantiers/voirie
+const NEWS_QUERIES = {
+  general: (commune) => `"${commune.nom}" ${commune.codeDepartement || ''}`,
+  travaux: (commune) => `"${commune.nom}" (travaux OR chantier OR voirie OR circulation OR stationnement OR déviation) ${commune.codeDepartement || ''}`,
+  sorties: (commune) => `"${commune.nom}" (sortie OR spectacle OR festival OR manifestation OR animation OR exposition OR concert) ${commune.codeDepartement || ''}`,
+  economie: (commune) => `"${commune.nom}" (emploi OR entreprise OR commerce OR artisan OR association OR projet OR inauguration OR développement) ${commune.codeDepartement || ''}`
+};
+
+async function fetchRssItems(commune, theme = 'general') {
+  const depart = NEWS_QUERIES[theme] ? theme : 'general';
+  const query = encodeURIComponent(NEWS_QUERIES[depart](commune));
   // Endpoint same-origin proxyfié (proxy Vite en dev, rewrite Vercel en prod)
   // car news.google.com n'expose pas d'en-tête CORS.
   const url = `/gnrss/search?q=${query}&hl=fr&gl=FR&ceid=FR:fr`;
@@ -45,19 +53,20 @@ async function fetchRssItems(commune) {
 
 /**
  * Retourne les actualités les plus pertinentes pour une commune.
+ * @param {string} theme 'general' | 'travaux'
  * @returns {Promise<Array<{title, link, source, pubDate}>>}
  */
-export async function fetchCommuneNews(commune) {
+export async function fetchCommuneNews(commune, theme = 'general') {
   if (!commune || !commune.nom) return [];
 
-  const cacheKey = commune.code || commune.nom;
+  const cacheKey = `${commune.code || commune.nom}:${theme}`;
   if (newsCache.has(cacheKey)) {
     return newsCache.get(cacheKey);
   }
 
   let items = [];
   try {
-    const raw = await fetchRssItems(commune);
+    const raw = await fetchRssItems(commune, theme);
     const nomNorm = normalize(commune.nom);
 
     // Priorité aux articles mentionnant explicitement la commune
@@ -69,7 +78,17 @@ export async function fetchCommuneNews(commune) {
       .sort((a, b) => b.score - a.score)
       .map(entry => entry.item);
 
-    items = scored.slice(0, MAX_ITEMS);
+    // Dédupliquer : Google News republie souvent le même titre via
+    // plusieurs sources ; on garde la première occurrence.
+    const seenTitles = new Set();
+    const unique = scored.filter((item) => {
+      const key = normalize(item.title).replace(/[^a-z0-9]+/g, ' ').trim();
+      if (!key || seenTitles.has(key)) return false;
+      seenTitles.add(key);
+      return true;
+    });
+
+    items = unique.slice(0, MAX_ITEMS);
   } catch (err) {
     console.warn('Actualités indisponibles pour', commune.nom, err);
   }

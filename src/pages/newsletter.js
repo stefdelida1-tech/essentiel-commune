@@ -59,8 +59,13 @@ export class NewsletterPageView {
     try {
       const enriched = await fetchCommuneDetails(commune);
       const base = enriched || commune;
-      const localNews = await fetchCommuneNews(base);
-      const bulletinData = generateCommuneBulletin({ ...base, localNews });
+      const [localNews, travauxNews, sortiesNews, economieNews] = await Promise.all([
+        fetchCommuneNews(base, 'general'),
+        fetchCommuneNews(base, 'travaux'),
+        fetchCommuneNews(base, 'sorties'),
+        fetchCommuneNews(base, 'economie')
+      ]);
+      const bulletinData = generateCommuneBulletin({ ...base, localNews, travauxNews, sortiesNews, economieNews });
       const html = renderBulletinHtml(bulletinData);
 
       if (this.contentEl) {

@@ -73,7 +73,7 @@
     </div>
 
     <!-- Navigation hiérarchique de la carte : Régions → Départements → Communes -->
-    <div id="map-nav" class="map-nav hidden" aria-label="Navigation cartographique">
+    <div id="map-nav" class="map-nav" aria-label="Navigation cartographique">
       <button id="map-back-btn" class="map-nav-back hidden" type="button">← Retour</button>
       <nav id="map-breadcrumb" class="map-breadcrumb" aria-label="Fil d'Ariane"></nav>
       <span id="map-status" class="map-status" aria-live="polite"></span>
@@ -175,6 +175,24 @@
     </div>
   </div>
 
+  <!-- Afficheur d'erreurs visible (secours si la console est inaccessible) -->
+  <div id="js-error-box" style="display:none; position:fixed; bottom:0; left:0; right:0; z-index:99999; background:#7f1d1d; color:#fff; padding:0.6rem 1rem; font:12px/1.4 monospace; white-space:pre-wrap;"></div>
+  <script>
+    (function () {
+      var box = document.getElementById('js-error-box');
+      function show(msg) {
+        if (!box) return;
+        box.style.display = 'block';
+        box.textContent += msg + '\n';
+      }
+      window.addEventListener('error', function (e) {
+        show('JS ERROR: ' + (e.message || e.type) + ' @ ' + (e.filename || '') + ':' + (e.lineno || ''));
+      });
+      window.addEventListener('unhandledrejection', function (e) {
+        show('PROMESSE REJETÉE: ' + (e.reason && (e.reason.message || e.reason)));
+      });
+    })();
+  </script>
   <script type="module" src="/src/main.js"></script>
 </body>
 
