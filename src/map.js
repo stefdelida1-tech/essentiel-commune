@@ -95,8 +95,8 @@ export class FranceMapExplorer {
   init() {
     this.map = L.map(this.containerId, {
       center: [46.6, 2.5],
-      zoom: 5,
-      minZoom: 5,
+      zoom: 6,
+      minZoom: 6,
       maxZoom: 18,
       zoomControl: false
     });
