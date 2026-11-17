@@ -1,6 +1,5 @@
-# https://www.robotstxt.org/robotstxt.html
 User-agent: *
 Allow: /
+Disallow: /api/
 
-# Sitemap
 Sitemap: https://essentiel-commune.vercel.app/sitemap.xml
