@@ -4,7 +4,7 @@
  */
 
 import { fetchCommuneDetails } from '../services/communeDetails.js';
-import { fetchCommuneNews } from '../services/news.js';
+import { fetchCommuneNews, fetchCivicAlerts } from '../services/news.js';
 import { generateCommuneBulletin, renderBulletinHtml } from '../components/NewsletterTemplate.js';
 
 export class NewsletterPageView {
@@ -55,17 +55,18 @@ export class NewsletterPageView {
     this.overlay.setAttribute('aria-hidden', 'false');
     document.body.style.overflow = 'hidden';
 
-    // Enrichissement dynamique via APIs ouvertes (détails territoriaux + actualités)
+    // Enrichissement dynamique via APIs ouvertes (détails territoriaux + actualités + alertes civiques)
     try {
       const enriched = await fetchCommuneDetails(commune);
       const base = enriched || commune;
-      const [localNews, travauxNews, sortiesNews, economieNews] = await Promise.all([
+      const [localNews, travauxNews, sortiesNews, economieNews, civicAlerts] = await Promise.all([
         fetchCommuneNews(base, 'general'),
         fetchCommuneNews(base, 'travaux'),
         fetchCommuneNews(base, 'sorties'),
-        fetchCommuneNews(base, 'economie')
+        fetchCommuneNews(base, 'economie'),
+        fetchCivicAlerts(base)
       ]);
-      const bulletinData = generateCommuneBulletin({ ...base, localNews, travauxNews, sortiesNews, economieNews });
+      const bulletinData = generateCommuneBulletin({ ...base, localNews, travauxNews, sortiesNews, economieNews, civicAlerts });
       const html = renderBulletinHtml(bulletinData);
 
       if (this.contentEl) {

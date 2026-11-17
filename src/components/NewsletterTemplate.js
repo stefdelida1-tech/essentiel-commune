@@ -29,13 +29,13 @@ function buildNewsSection(commune, news) {
 
   return {
     tag: '📰 Actualités locales',
-    title: `Ce qui fait l’actualité de ${commune.nom}`,
+    title: `Ce qui fait l'actualité de ${commune.nom}`,
     content: `
       <ul style="padding-left: 1.25rem; line-height: 1.6; display: flex; flex-direction: column; gap: 0.6rem;">
         ${items}
       </ul>
       <p style="margin-top: 0.75rem; font-size: 0.82rem; color: #64748b; font-style: italic;">
-        Sources : fils d’actualité en ligne, sélectionnés pour ${escapeHtml(commune.nom)}.
+        Sources : fils d'actualité en ligne, sélectionnés pour ${escapeHtml(commune.nom)}.
       </p>
     `
   };
@@ -73,7 +73,7 @@ function buildRepèresSection(commune) {
 
   return {
     tag: '📊 Repères du territoire',
-    title: `Les chiffres de ${commune.nom} en un coup d’œil`,
+    title: `Les chiffres de ${commune.nom} en un coup d'œil`,
     content: `
       <ul style="padding-left: 1.25rem; line-height: 1.7; display: flex; flex-direction: column; gap: 0.35rem;">
         ${items.join('')}
@@ -145,20 +145,20 @@ export function generateCommuneBulletin(commune) {
   }
 
   // Éditorial d'ouverture, calqué sur le ton de l'édition de Bondy
-  const introSubtitle = `Le rendez-vous d’information des habitants de ${commune.nom}. Lisible en 2 minutes chrono.`;
+  const introSubtitle = `Le rendez-vous d'information des habitants de ${commune.nom}. Lisible en 2 minutes chrono.`;
   let editorialText = '';
   switch (commune.cadreDeVieType) {
     case 'metropole':
-      editorialText = `Bienvenue dans l’édition d’information citoyenne de ${commune.nom}. Forte de ses ${pop} résidents, notre commune s’inscrit dans les grandes dynamiques urbaines de ${dep}${reg}. Retrouvez l’essentiel des actualités, mobilités et services du quotidien.`;
+      editorialText = `Bienvenue dans l'édition d'information citoyenne de ${commune.nom}. Forte de ses ${pop} résidents, notre commune s'inscrit dans les grandes dynamiques urbaines de ${dep}${reg}. Retrouvez l'essentiel des actualités, mobilités et services du quotidien.`;
       break;
     case 'urbain':
-      editorialText = `Bienvenue dans l’édition locale de ${commune.nom}. Avec ${pop} habitants, notre ville veille à conjuguer vitalité économique, services de proximité et qualité du cadre de vie en ${dep}.`;
+      editorialText = `Bienvenue dans l'édition locale de ${commune.nom}. Avec ${pop} habitants, notre ville veille à conjuguer vitalité économique, services de proximité et qualité du cadre de vie en ${dep}.`;
       break;
     case 'bourg':
-      editorialText = `Bienvenue dans l’édition citoyenne de ${commune.nom}. Pôle de centralité de son bassin de vie (${pop} habitants), la commune soutient le commerce de proximité, les initiatives locales et la convivialité en ${dep}.`;
+      editorialText = `Bienvenue dans l'édition citoyenne de ${commune.nom}. Pôle de centralité de son bassin de vie (${pop} habitants), la commune soutient le commerce de proximité, les initiatives locales et la convivialité en ${dep}.`;
       break;
     default: // rural
-      editorialText = `Bienvenue dans l’édition d’information de ${commune.nom}. Avec ses ${pop} habitants, notre commune valorise son authenticité rurale, la solidarité entre voisins et la préservation de notre environnement en ${dep}.`;
+      editorialText = `Bienvenue dans l'édition d'information de ${commune.nom}. Avec ses ${pop} habitants, notre commune valorise son authenticité rurale, la solidarité entre voisins et la préservation de notre environnement en ${dep}.`;
       break;
   }
 
@@ -193,7 +193,7 @@ export function generateCommuneBulletin(commune) {
         </p>
       ` : `
         <ul style="padding-left: 1.25rem; line-height: 1.6; display: flex; flex-direction: column; gap: 0.5rem;">
-          <li><strong>Voiries et domaine public :</strong> Les opérations d’entretien et de réfection se poursuivent sur la commune de ${commune.nom}. Respectez la signalisation temporaire et adaptez vos trajets aux déviations éventuelles.</li>
+          <li><strong>Voiries et domaine public :</strong> Les opérations d'entretien et de réfection se poursuivent sur la commune de ${commune.nom}. Respectez la signalisation temporaire et adaptez vos trajets aux déviations éventuelles.</li>
           <li><strong>Stationnement :</strong> Des fermetures temporaires de stationnement peuvent être mises en place autour des chantiers en cours. Renseignez-vous en mairie avant vos déplacements.</li>
           <li><strong>Transports et déplacements :</strong> Consultez les horaires et les éventuelles perturbations des lignes desservant ${commune.nom} avant de partir.</li>
         </ul>
@@ -210,11 +210,11 @@ export function generateCommuneBulletin(commune) {
           ${sortiesLinks}
         </ul>
         <p style="margin-top: 0.75rem; font-size: 0.82rem; color: #64748b; font-style: italic;">
-          📆 Pour l’agenda complet : site de la mairie et offices de tourisme.
+          📆 Pour l'agenda complet : site de la mairie et offices de tourisme.
         </p>
       ` : `
         <ul style="padding-left: 1.25rem; line-height: 1.6; display: flex; flex-direction: column; gap: 0.6rem;">
-          <li>📅 <strong>Agenda municipal :</strong> Consultez le site de la mairie et les supports d’information pour les animations, expositions et rencontres de la semaine.</li>
+          <li>📅 <strong>Agenda municipal :</strong> Consultez le site de la mairie et les supports d'information pour les animations, expositions et rencontres de la semaine.</li>
           <li>🏛️ <strong>Vie associative :</strong> Clubs sportifs, comités des fêtes et associations culturelles animent la vie locale. Contactez la mairie pour proposer une initiative ou une sortie.</li>
           <li>🎨 <strong>En famille :</strong> Les structures municipales et intercommunales organisent régulièrement des animations dédiées aux enfants et aux familles.</li>
         </ul>
@@ -230,7 +230,7 @@ export function generateCommuneBulletin(commune) {
         </ul>
         ` : ''}
         <p style="line-height: 1.6; margin-bottom: 0.5rem;">
-          L’accueil citoyen de la mairie vous reçoit pour vos formalités (${mairie}). Les services publics sont également accessibles via la Maison France Services et le portail de démarches en ligne. Artisans, commerçants et associations de ${commune.nom} : vous pouvez transmettre vos actualités pour les prochaines éditions.
+          L'accueil citoyen de la mairie vous reçoit pour vos formalités (${mairie}). Les services publics sont également accessibles via la Maison France Services et le portail de démarches en ligne. Artisans, commerçants et associations de ${commune.nom} : vous pouvez transmettre vos actualités pour les prochaines éditions.
         </p>
         ${epci ? `
         <p style="font-size: 0.88rem; margin-bottom: 0.5rem;">
@@ -238,20 +238,43 @@ export function generateCommuneBulletin(commune) {
         </p>
         ` : ''}
         <p style="font-size: 0.85rem; color: #64748b; font-style: italic;">
-          💡 Vous souhaitez faire rayonner une initiative locale ? Contactez la mairie ou la rédaction de <em>L’Essentiel de ${commune.nom}</em>.
+          💡 Vous souhaitez faire rayonner une initiative locale ? Contactez la mairie ou la rédaction de <em>L'Essentiel de ${commune.nom}</em>.
         </p>
       `
     },
     {
       tag: '📌 Le rappel citoyen de la semaine',
-      title: 'Santé, solidarité et environnement',
-      content: `
-        <ul style="padding-left: 1.25rem; line-height: 1.6; display: flex; flex-direction: column; gap: 0.5rem;">
-          <li>🎗️ <strong>Santé et prévention :</strong> Les campagnes de dépistage et de sensibilisation (saisonnières ou thématiques) sont annoncées par la mairie et les structures de santé locales.</li>
-          <li>🎁 <strong>Seniors et familles :</strong> Les actions sociales et les dispositifs d’aide (CCAS, aides locales) peuvent être demandés auprès de la mairie ou des structures compétentes.</li>
-          <li>♻️ <strong>Tri et déchets :</strong> Respectez le calendrier de collecte et les consignes de tri de votre secteur pour un service plus efficace.</li>
-        </ul>
-      `
+      title: 'Santé, sécurité et environnement',
+      content: (() => {
+        const alerts = commune.civicAlerts || {};
+        const pollenItems = (alerts.pollen || []).map(p => {
+          const title = escapeHtml(p.title);
+          const desc = escapeHtml(p.description);
+          const link = p.link ? `<a href="${escapeHtml(p.link)}" target="_blank" rel="noopener noreferrer" style="color: #1e40af; text-decoration: none;">En savoir plus</a>` : '';
+          return `<li>🌸 <strong>${title}</strong> ${desc ? `: ${desc}` : ''} ${link}</li>`;
+        }).join('');
+
+        const meteoItems = (alerts.meteo || []).map(m => {
+          const title = escapeHtml(m.title);
+          const desc = escapeHtml(m.description);
+          const link = m.link ? `<a href="${escapeHtml(m.link)}" target="_blank" rel="noopener noreferrer" style="color: #1e40af; text-decoration: none;">Détails</a>` : '';
+          return `<li>⚠️ <strong>${title}</strong> ${desc ? `: ${desc}` : ''} ${link}</li>`;
+        }).join('');
+
+        const airQuality = commune.airQuality;
+        const airItem = airQuality ? `<li>🌬️ <strong>Qualité de l'air :</strong> ${airQuality.label} (AQI ${airQuality.aqi}) — ${airQuality.interpretation}</li>` : '';
+
+        return `
+          ${pollenItems ? `<ul style="padding-left: 1.25rem; line-height: 1.6; display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.75rem;">${pollenItems}</ul>` : ''}
+          ${meteoItems ? `<ul style="padding-left: 1.25rem; line-height: 1.6; display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.75rem;">${meteoItems}</ul>` : ''}
+          <ul style="padding-left: 1.25rem; line-height: 1.6; display: flex; flex-direction: column; gap: 0.5rem;">
+            ${airItem}
+            <li>🎗️ <strong>Santé et prévention :</strong> Les campagnes de dépistage et de sensibilisation (saisonnières ou thématiques) sont annoncées par la mairie et les structures de santé locales.</li>
+            <li>🎁 <strong>Seniors et familles :</strong> Les actions sociales et les dispositifs d'aide (CCAS, aides locales) peuvent être demandés auprès de la mairie ou des structures compétentes.</li>
+            <li>♻️ <strong>Tri et déchets :</strong> Respectez le calendrier de collecte et les consignes de tri de votre secteur pour un service plus efficace.</li>
+          </ul>
+        `;
+      })()
     }
   ];
 
@@ -372,7 +395,7 @@ export function renderBulletinHtml(bulletin) {
         ` : ''}
         ${bulletin.pratique.horaires ? `
         <div class="footer-contacts" style="margin-top: 0.25rem; font-size: 0.85rem;">
-          🕐 <strong>Horaires d’ouverture :</strong> ${bulletin.pratique.horaires}
+          🕐 <strong>Horaires d'ouverture :</strong> ${bulletin.pratique.horaires}
         </div>
         ` : ''}
         <div class="footer-contacts" style="margin-top: 0.25rem;">

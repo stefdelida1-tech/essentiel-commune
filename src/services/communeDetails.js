@@ -6,6 +6,7 @@
  */
 
 import { fetchMairieInfo } from './annuaire.js';
+import { fetchAirQuality } from './weather.js';
 
 const detailsCache = new Map();
 const WIKIDATA_UA = { 'User-Agent': 'EssentielCommune/1.0 (contact@essentiel-commune.vercel.app)' };
@@ -62,10 +63,11 @@ export async function fetchCommuneDetails(commune) {
   const lng = typeof centreCoords?.[0] === 'number' ? centreCoords[0] : (commune.lng ?? commune.lon ?? null);
   const lat = typeof centreCoords?.[1] === 'number' ? centreCoords[1] : (commune.lat ?? null);
 
-  // Requêtes satellites : infos mairie (annuaire-mairie.fr) + gentilé (Wikidata)
+  // Requêtes satellites : infos mairie (annuaire-mairie.fr) + gentilé (Wikidata) + qualité de l'air
   const mairiePromise = fetchMairieInfo({ ...commune, nom: geoData.nom || commune.nom }).catch(() => null);
   const gentilePromise = fetchGentile(geoData.nom || commune.nom).catch(() => null);
-  const [mairieInfo, gentile] = await Promise.all([mairiePromise, gentilePromise]);
+  const airQualityPromise = (lat && lng) ? fetchAirQuality(lat, lng).catch(() => null) : Promise.resolve(null);
+  const [mairieInfo, gentile, airQuality] = await Promise.all([mairiePromise, gentilePromise, airQualityPromise]);
 
   // 3. Recherche de l'adresse officielle de la Mairie via son SIREN
   let mairieAdresse = null;
@@ -118,6 +120,7 @@ export async function fetchCommuneDetails(commune) {
     lng,
     mairie: mairieInfo || null,
     gentile,
+    airQuality,
     wikiExtract: wikiData.extract || null,
     photoUrl: wikiData.thumbnail?.source || null,
     wikiUrl: wikiData.content_urls?.desktop?.page || null
