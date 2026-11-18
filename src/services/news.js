@@ -5,6 +5,8 @@
  * et alertes civiques (pollens, météo, qualité de l'air).
  */
 
+import { isFresh, parseDate } from './freshness.js';
+
 const newsCache = new Map();
 const NEWS_TIMEOUT_MS = 8000;
 const MAX_ITEMS = 4;
@@ -58,6 +60,7 @@ async function fetchRssItems(commune, theme = 'general') {
       link: item.querySelector('link')?.textContent?.trim() || '',
       source: item.querySelector('source')?.textContent?.trim() || '',
       pubDate: item.querySelector('pubDate')?.textContent?.trim() || '',
+      pubDateTs: parseDate(item.querySelector('pubDate')?.textContent?.trim()),
       description: item.querySelector('description')?.textContent?.trim() || ''
     }));
   } finally {
@@ -94,11 +97,14 @@ export async function fetchCivicAlerts(commune) {
           const xml = await res.text();
           const doc = new DOMParser().parseFromString(xml, 'text/xml');
           if (!doc.querySelector('parsererror')) {
-            const items = Array.from(doc.querySelectorAll('item')).map(item => ({
-              title: item.querySelector('title')?.textContent?.trim() || '',
-              link: item.querySelector('link')?.textContent?.trim() || '',
-              description: item.querySelector('description')?.textContent?.trim() || ''
-            }));
+            const items = Array.from(doc.querySelectorAll('item'))
+              // Anti-obsolescence : seules les alertes de moins de 60 jours sont retenues
+              .filter(item => isFresh(item.querySelector('pubDate')?.textContent?.trim()))
+              .map(item => ({
+                title: item.querySelector('title')?.textContent?.trim() || '',
+                link: item.querySelector('link')?.textContent?.trim() || '',
+                description: item.querySelector('description')?.textContent?.trim() || ''
+              }));
             alerts.meteo = items.slice(0, 2).map(i => ({
               title: i.title,
               description: i.description?.replace(/<[^>]+>/g, '').substring(0, 200) || '',
@@ -137,8 +143,12 @@ export async function fetchCommuneNews(commune, theme = 'general') {
     const raw = await fetchRssItems(commune, theme);
     const nomNorm = normalize(commune.nom);
 
+    // Anti-obsolescence : on ne garde que les articles publiés
+    // dans les 60 derniers jours (ou sans date fiable : exclus).
+    const fresh = raw.filter(item => isFresh(item.pubDateTs ?? item.pubDate));
+
     // Priorité aux articles mentionnant explicitement la commune
-    const scored = raw
+    const scored = fresh
       .map(item => {
         const haystack = normalize(`${item.title} ${item.description}`);
         return { item, score: haystack.includes(nomNorm) ? 1 : 0 };

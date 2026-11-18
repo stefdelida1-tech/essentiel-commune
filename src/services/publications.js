@@ -6,9 +6,8 @@
 export const LOCAL_PUBLICATIONS = {
   // Édition réelle de Bondy par Nicolas Ratisbonne
   '93010': {
-    title: "L’Essentiel de Bondy — Édition N°0",
-    editionDate: "Jeudi 15 Octobre 2026",
-    subtitle: "Le rendez-vous hebdomadaire d’information des Bondynois. Lisible en 2 minutes chrono tous les jeudis matin.",
+    title: "L’Essentiel de Bondy",
+    subtitle: "Le rendez-vous d’information des Bondynois. Lisible en 2 minutes chrono.",
     substackUrl: "https://nicolastfn.substack.com/p/lessentiel-de-bondy-0",
     author: "Nicolas Ratisbonne",
     chiffreSemaine: {

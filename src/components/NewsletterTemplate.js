@@ -5,6 +5,7 @@
  */
 
 import { getCustomPublication } from '../services/publications.js';
+import { isFresh, filterEventsInWindow, parseDate } from '../services/freshness.js';
 
 function escapeHtml(str) {
   return (str || '')
@@ -16,7 +17,9 @@ function escapeHtml(str) {
 
 function buildNewsSection(commune, news) {
   const items = (news || [])
-    .filter(item => item && item.title)
+    // Anti-obsolescence : on ne rend jamais une actualité de plus de 60 jours
+    // (ou sans date de publication fiable).
+    .filter(item => item && item.title && isFresh(item.pubDateTs ?? item.pubDate))
     .map(item => {
       const title = escapeHtml(item.title);
       const source = item.source ? ` <span style="color: #64748b; font-size: 0.82rem;">— ${escapeHtml(item.source)}</span>` : '';
@@ -26,6 +29,8 @@ function buildNewsSection(commune, news) {
       return `<li>${link}</li>`;
     })
     .join('');
+
+  if (!items) return null;
 
   return {
     tag: '📰 Actualités locales',
@@ -66,8 +71,8 @@ function buildRepèresSection(commune) {
   if (commune.epciNom) {
     items.push(`<li>🤝 <strong>Intercommunalité :</strong> ${commune.epciNom}</li>`);
   }
-  if (commune.maire?.maire) {
-    items.push(`<li>🏛️ <strong>Maire :</strong> ${commune.maire.maire}${commune.maire.mandat ? ` (mandat ${commune.maire.mandat})` : ''}</li>`);
+  if (commune.mairie?.maire) {
+    items.push(`<li>🏛️ <strong>Maire :</strong> ${escapeHtml(commune.mairie.maire)}${commune.mairie.mandat ? ` (mandat ${escapeHtml(commune.mairie.mandat)})` : ''}</li>`);
   }
   if (items.length === 0) return null;
 
@@ -82,17 +87,88 @@ function buildRepèresSection(commune) {
   };
 }
 
-/** Insère les rubriques dynamiques (actualités RSS + repères territoire) après la 1ʳᵉ section. */
+/** Formate la date de début d'un événement (ex. "sam. 22 nov. à 14h30"). */
+function formatEventDate(ev) {
+  const start = ev?.start ? new Date(ev.start) : null;
+  if (!start || Number.isNaN(start.getTime())) return null;
+  const datePart = start.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
+  const hasTime = start.getHours() !== 0 || start.getMinutes() !== 0;
+  const timePart = hasTime ? start.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : null;
+  return timePart ? `${datePart} à ${timePart}` : datePart;
+}
+
+/** Liste HTML des événements locaux à venir (déjà filtrés à la fenêtre 0–60 j). */
+function buildEventsList(events) {
+  return filterEventsInWindow(events || [])
+    .filter(ev => ev && ev.title)
+    .map(ev => {
+      const dateLabel = formatEventDate(ev);
+      const dateHtml = dateLabel
+        ? `<div style="font-size: 0.78rem; color: #b45309; font-weight: 600;">📅 ${escapeHtml(dateLabel)}</div>`
+        : '';
+      const lieu = ev.lieu ? `<div style="font-size: 0.8rem; color: #64748b;">${escapeHtml(ev.lieu)}</div>` : '';
+      const titleHtml = ev.url
+        ? `<a href="${escapeHtml(ev.url)}" target="_blank" rel="noopener noreferrer" style="color: #1e40af; text-decoration: none;"><strong>${escapeHtml(ev.title)}</strong></a>`
+        : `<strong>${escapeHtml(ev.title)}</strong>`;
+      return `<li>${titleHtml}${dateHtml}${lieu}</li>`;
+    })
+    .join('');
+}
+
+/** Section « Services publics » : fiches annuaire modifiées il y a moins de 60 jours. */
+function buildServicesSection(commune) {
+  const services = (commune.servicesPublics || [])
+    // Anti-obsolescence : fiches mises à jour il y a moins de 60 jours uniquement
+    .filter(s => s && s.nom && isFresh(s.dateMaj, { maxFutureDays: 0 }))
+    .map(s => {
+      const nom = escapeHtml(s.nom);
+      const tel = s.telephone
+        ? ` — <a href="tel:${escapeHtml(s.telephone.replace(/\s/g, ''))}" style="color: #1e40af; text-decoration: none;">${escapeHtml(s.telephone)}</a>`
+        : '';
+      const link = s.url
+        ? ` <a href="${escapeHtml(s.url)}" target="_blank" rel="noopener noreferrer" style="color: #1e40af; font-size: 0.82rem;">fiche</a>`
+        : '';
+      return `<li>🏛️ <strong>${nom}</strong>${tel}${link}</li>`;
+    })
+    .join('');
+
+  if (!services) return null;
+
+  return {
+    tag: '🗂️ Services publics',
+    title: `Les services et points d'accueil près de ${commune.nom}`,
+    content: `
+      <ul style="padding-left: 1.25rem; line-height: 1.6; display: flex; flex-direction: column; gap: 0.4rem;">
+        ${services}
+      </ul>
+      <p style="margin-top: 0.6rem; font-size: 0.78rem; color: #64748b; font-style: italic;">
+        Fiches du Répertoire de l'administration (service-public.fr), mises à jour il y a moins de 60 jours.
+      </p>
+    `
+  };
+}
+
+/** Insère les rubriques dynamiques (actualités RSS + repères territoire + services) après la 1ʳᵉ section. */
 function injectDynamicSections(sections, commune) {
   const result = [...sections];
-  if (commune.localNews && commune.localNews.length > 0) {
-    result.splice(1, 0, buildNewsSection(commune, commune.localNews));
+  let offset = 0;
+  const localNewsSection = buildNewsSection(commune, commune.localNews);
+  if (localNewsSection) {
+    result.splice(1 + offset, 0, localNewsSection);
+    offset += 1;
   }
   const repèresSection = buildRepèresSection(commune);
   if (repèresSection) {
-    result.splice(1 + (commune.localNews?.length ? 1 : 0), 0, repèresSection);
+    result.splice(1 + offset, 0, repèresSection);
+    offset += 1;
   }
-  return result;
+  const servicesSection = buildServicesSection(commune);
+  if (servicesSection) {
+    result.splice(1 + offset, 0, servicesSection);
+  }
+
+  // Anti-obsolescence : on masque proprement toute rubrique vide ou sans contenu.
+  return result.filter(sec => sec && typeof sec.content === 'string' && sec.content.trim().length > 0);
 }
 
 export function generateCommuneBulletin(commune) {
@@ -125,7 +201,10 @@ export function generateCommuneBulletin(commune) {
         urgences: 'SAMU : 15 | Pompiers : 18 | Police/Gendarmerie : 17 | Urgence Européenne : 112',
         contactMairie: commune.mairieAdresse ? `Mairie : ${commune.mairieAdresse}` : `Hôtel de Ville de ${commune.nom}`,
         telephone: commune.mairie?.telephone || null,
-        horaires: commune.mairie?.horaires || null
+        horaires: commune.mairie?.horaires || null,
+        email: commune.mairie?.email || null,
+        site: commune.mairie?.site || null,
+        dateMaj: commune.mairie?.dateMaj || null
       }
     };
   }
@@ -170,8 +249,10 @@ export function generateCommuneBulletin(commune) {
   }
 
   // Helper pour construire les liens d'actualités (max 3 par défaut)
+  // Anti-obsolescence : seules les actualités de moins de 60 jours sont affichées.
+  const isNewsFresh = (item) => item && item.title && isFresh(item.pubDateTs ?? item.pubDate);
   const buildLinks = (news, max = 3) => (news || [])
-    .filter(item => item && item.title)
+    .filter(isNewsFresh)
     .slice(0, max)
     .map(item => {
       const title = escapeHtml(item.title);
@@ -184,7 +265,7 @@ export function generateCommuneBulletin(commune) {
 
   // Helper pour la section rappel citoyen (max 2 articles)
   const buildSectionLinks = (news, max = 2) => (news || [])
-    .filter(item => item && item.title)
+    .filter(isNewsFresh)
     .slice(0, max)
     .map(item => {
       const title = escapeHtml(item.title);
@@ -201,6 +282,30 @@ export function generateCommuneBulletin(commune) {
   const santeLinks = buildSectionLinks(commune.santeNews);
   const seniorsLinks = buildSectionLinks(commune.seniorsNews);
   const dechetsLinks = buildSectionLinks(commune.dechetsNews);
+
+  // Événements structurés (DATAtourisme / OpenAgenda) : fenêtre aujourd'hui → +60 j.
+  // À défaut, on retombe sur les actualités « sorties » (déjà filtrées < 60 j).
+  const eventsList = buildEventsList(commune.events);
+  const sortiesNewsHtml = sortiesLinks ? `
+        <p style="margin-top: 0.6rem; font-size: 0.85rem; color: #475569;"><strong>Dans l'actualité :</strong></p>
+        <ul style="padding-left: 1.25rem; line-height: 1.6; display: flex; flex-direction: column; gap: 0.5rem;">
+          ${sortiesLinks}
+        </ul>` : '';
+  const sortiesContent = (eventsList || sortiesLinks) ? `
+        <ul style="padding-left: 1.25rem; line-height: 1.6; display: flex; flex-direction: column; gap: 0.6rem;">
+          ${eventsList}
+        </ul>
+        ${sortiesNewsHtml}
+        <p style="margin-top: 0.75rem; font-size: 0.82rem; color: #64748b; font-style: italic;">
+          📆 Événements et sorties du moment pour ${escapeHtml(commune.nom)} — agendas des 60 prochains jours.
+        </p>
+      ` : `
+        <ul style="padding-left: 1.25rem; line-height: 1.6; display: flex; flex-direction: column; gap: 0.6rem;">
+          <li>📅 <strong>Agenda municipal :</strong> Consultez le site de la mairie et les supports d'information pour les animations, expositions et rencontres à venir.</li>
+          <li>🏛️ <strong>Vie associative :</strong> Clubs sportifs, comités des fêtes et associations culturelles animent la vie locale. Contactez la mairie pour proposer une initiative ou une sortie.</li>
+          <li>🎨 <strong>En famille :</strong> Les structures municipales et intercommunales organisent régulièrement des animations dédiées aux enfants et aux familles.</li>
+        </ul>
+      `;
 
   const sections = [
     {
@@ -226,21 +331,8 @@ export function generateCommuneBulletin(commune) {
     },
     {
       tag: `📅 Que faire à ${commune.nom} ?`,
-      title: 'Sorties, sports et animations de la semaine',
-      content: sortiesLinks ? `
-        <ul style="padding-left: 1.25rem; line-height: 1.6; display: flex; flex-direction: column; gap: 0.6rem;">
-          ${sortiesLinks}
-        </ul>
-        <p style="margin-top: 0.75rem; font-size: 0.82rem; color: #64748b; font-style: italic;">
-          📆 Pour l'agenda complet : site de la mairie et offices de tourisme.
-        </p>
-      ` : `
-        <ul style="padding-left: 1.25rem; line-height: 1.6; display: flex; flex-direction: column; gap: 0.6rem;">
-          <li>📅 <strong>Agenda municipal :</strong> Consultez le site de la mairie et les supports d'information pour les animations, expositions et rencontres de la semaine.</li>
-          <li>🏛️ <strong>Vie associative :</strong> Clubs sportifs, comités des fêtes et associations culturelles animent la vie locale. Contactez la mairie pour proposer une initiative ou une sortie.</li>
-          <li>🎨 <strong>En famille :</strong> Les structures municipales et intercommunales organisent régulièrement des animations dédiées aux enfants et aux familles.</li>
-        </ul>
-      `
+      title: 'Sorties, sports et animations à venir',
+      content: sortiesContent
     },
     {
       tag: '💼 Vie locale & Initiatives',
@@ -356,13 +448,20 @@ export function generateCommuneBulletin(commune) {
       urgences: 'SAMU : 15 | Pompiers : 18 | Police/Gendarmerie : 17 | Urgence Européenne : 112',
       contactMairie: commune.mairieAdresse ? `Mairie : ${commune.mairieAdresse}` : `Mairie de ${commune.nom} (${commune.codesPostaux?.[0] || commune.codeDepartement})`,
       telephone: commune.mairie?.telephone || null,
-      horaires: commune.mairie?.horaires || null
+      horaires: commune.mairie?.horaires || null,
+      email: commune.mairie?.email || null,
+      site: commune.mairie?.site || null,
+      dateMaj: commune.mairie?.dateMaj || null
     }
   };
 }
 
 export function renderBulletinHtml(bulletin) {
   if (!bulletin) return '';
+
+  const editionBadge = bulletin.editionDate
+    ? `<span>ÉDITION : ${bulletin.editionDate}</span>`
+    : '';
 
   return `
     <article class="bulletin-sheet" role="article" aria-label="Bulletin d'information de ${bulletin.communeName}">
@@ -371,7 +470,7 @@ export function renderBulletinHtml(bulletin) {
         <div class="bulletin-topline">
           <span>RÉPUBLIQUE FRANÇAISE</span>
           <span>${bulletin.department}</span>
-          <span>ÉDITION : ${bulletin.editionDate}</span>
+          ${editionBadge}
           ${bulletin.visitCount ? `<span style="background: #dbeafe; color: #1e40af; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">👁️ ${bulletin.visitCount} consultation${bulletin.visitCount > 1 ? 's' : ''}</span>` : ''}
         </div>
         
@@ -461,6 +560,17 @@ export function renderBulletinHtml(bulletin) {
         ${bulletin.pratique.horaires ? `
         <div class="footer-contacts" style="margin-top: 0.25rem; font-size: 0.85rem;">
           🕐 <strong>Horaires d'ouverture :</strong> ${bulletin.pratique.horaires}
+        </div>
+        ` : ''}
+        ${bulletin.pratique.email ? `
+        <div class="footer-contacts" style="margin-top: 0.25rem; font-size: 0.85rem;">
+          ✉️ <strong>E-mail :</strong> <a href="mailto:${bulletin.pratique.email}" style="color: #1e40af;">${bulletin.pratique.email}</a>
+        </div>
+        ` : ''}
+        ${bulletin.pratique.site ? `
+        <div class="footer-contacts" style="margin-top: 0.25rem; font-size: 0.85rem;">
+          🌐 <a href="${bulletin.pratique.site}" target="_blank" rel="noopener noreferrer" style="color: #1e40af;">Site officiel de la mairie</a>
+          ${bulletin.pratique.dateMaj ? `<span style="color: #94a3b8;"> — fiche mise à jour le ${new Date(bulletin.pratique.dateMaj).toLocaleDateString('fr-FR')}</span>` : ''}
         </div>
         ` : ''}
         <div class="footer-contacts" style="margin-top: 0.25rem;">

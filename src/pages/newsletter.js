@@ -5,7 +5,10 @@
 
 import { fetchCommuneDetails } from '../services/communeDetails.js';
 import { fetchCommuneNews, fetchCivicAlerts } from '../services/news.js';
+import { fetchCommuneEvents } from '../services/events.js';
+import { fetchServicesPublics } from '../services/annuaire.js';
 import { generateCommuneBulletin, renderBulletinHtml } from '../components/NewsletterTemplate.js';
+import { LocalCommuneAssistant } from '../components/LocalCommuneAssistant.js';
 
 export class NewsletterPageView {
   constructor(overlayId) {
@@ -14,6 +17,8 @@ export class NewsletterPageView {
     this.closeBtn = document.getElementById('newsletter-close-btn');
     this.printBtn = document.getElementById('newsletter-print-btn');
     this.currentCommune = null;
+    this.showRequestId = 0;
+    this.assistant = null;
 
     this.initEvents();
   }
@@ -39,6 +44,9 @@ export class NewsletterPageView {
 
   async show(commune) {
     if (!commune || !this.overlay) return;
+    const requestId = ++this.showRequestId;
+    this.assistant?.destroy();
+    this.assistant = null;
     this.currentCommune = commune;
 
     // Affichage initial pendant le chargement des détails enrichis
@@ -59,7 +67,7 @@ export class NewsletterPageView {
     try {
       const enriched = await fetchCommuneDetails(commune);
       const base = enriched || commune;
-      const [localNews, travauxNews, sortiesNews, economieNews, santeNews, seniorsNews, dechetsNews, civicAlerts] = await Promise.all([
+      const [localNews, travauxNews, sortiesNews, economieNews, santeNews, seniorsNews, dechetsNews, civicAlerts, events, servicesPublics] = await Promise.all([
         fetchCommuneNews(base, 'general'),
         fetchCommuneNews(base, 'travaux'),
         fetchCommuneNews(base, 'sorties'),
@@ -67,31 +75,49 @@ export class NewsletterPageView {
         fetchCommuneNews(base, 'sante'),
         fetchCommuneNews(base, 'seniors'),
         fetchCommuneNews(base, 'dechets'),
-        fetchCivicAlerts(base)
+        fetchCivicAlerts(base),
+        fetchCommuneEvents(base),
+        fetchServicesPublics(base)
       ]);
-      const bulletinData = generateCommuneBulletin({ ...base, localNews, travauxNews, sortiesNews, economieNews, santeNews, seniorsNews, dechetsNews, civicAlerts });
+      const enrichedData = { ...base, localNews, travauxNews, sortiesNews, economieNews, santeNews, seniorsNews, dechetsNews, civicAlerts, events, servicesPublics };
+      const bulletinData = generateCommuneBulletin(enrichedData);
       const html = renderBulletinHtml(bulletinData);
 
+      if (requestId !== this.showRequestId) return;
       if (this.contentEl) {
         this.contentEl.innerHTML = html;
+        this.mountLocalAssistant(enrichedData);
       }
     } catch (err) {
       console.error('Erreur enrichissement bulletin:', err);
+      if (requestId !== this.showRequestId) return;
       // Fallback avec données de base
       const bulletinData = generateCommuneBulletin(commune);
       const html = renderBulletinHtml(bulletinData);
       if (this.contentEl) {
         this.contentEl.innerHTML = html;
+        this.mountLocalAssistant(commune);
       }
     }
 
+    if (requestId !== this.showRequestId) return;
     if (this.closeBtn) {
       this.closeBtn.focus();
     }
   }
 
+  mountLocalAssistant(commune) {
+    if (import.meta.env.DEV && this.contentEl) {
+      this.assistant = new LocalCommuneAssistant(commune);
+      this.assistant.mount(this.contentEl);
+    }
+  }
+
   hide() {
     if (!this.overlay) return;
+    this.showRequestId++;
+    this.assistant?.destroy();
+    this.assistant = null;
     this.overlay.classList.add('hidden');
     this.overlay.setAttribute('aria-hidden', 'true');
     document.body.style.overflow = '';

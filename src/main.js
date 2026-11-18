@@ -17,6 +17,19 @@ let newsletterView = null;
 let legalModal = null;
 
 const statIndicator = document.getElementById('stat-indicator');
+const siteStats = document.getElementById('site-stats');
+
+// Compteur de visites du site (même principe localStorage que les visites de communes)
+function incrementSiteVisits() {
+  const key = 'visites_site';
+  const visits = parseInt(localStorage.getItem(key) || '0', 10) + 1;
+  localStorage.setItem(key, visits.toString());
+  return visits;
+}
+
+// Effectifs territoriaux officiels (geo.api.gouv.fr)
+const NB_DEPARTEMENTS = 101;
+const NB_REGIONS = 18;
 const searchInput = document.getElementById('search-input');
 const searchResults = document.getElementById('search-results');
 const searchClear = document.getElementById('search-clear');
@@ -30,8 +43,13 @@ async function loadCommunesData() {
       throw new Error(`Erreur HTTP: ${response.status}`);
     }
     communes = await response.json();
+    const siteVisits = incrementSiteVisits();
     if (statIndicator) {
-      statIndicator.textContent = `📍 ${communes.length.toLocaleString('fr-FR')} communes de France`;
+      statIndicator.textContent = `👁️ ${siteVisits.toLocaleString('fr-FR')} visites`;
+      statIndicator.title = "Visites du site L'Essentiel de ma Commune";
+    }
+    if (siteStats) {
+      siteStats.textContent = `📊 ${communes.length.toLocaleString('fr-FR')} communes • ${NB_DEPARTEMENTS} départements • ${NB_REGIONS} régions`;
     }
 
     // Initialiser la fiche de commune
