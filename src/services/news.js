@@ -29,14 +29,15 @@ function normalize(str) {
 }
 
 // Requêtes thématiques : 'general' = actualités locales, 'travaux' = chantiers/voirie
+// Le filtre Google News `when:60d` limite la remontée aux articles des 60 derniers jours.
 const NEWS_QUERIES = {
-  general: (commune) => `"${commune.nom}" ${commune.codeDepartement || ''}`,
-  travaux: (commune) => `"${commune.nom}" (travaux OR chantier OR voirie OR circulation OR stationnement OR déviation) ${commune.codeDepartement || ''}`,
-  sorties: (commune) => `"${commune.nom}" (sortie OR spectacle OR festival OR manifestation OR animation OR exposition OR concert) ${commune.codeDepartement || ''}`,
-  economie: (commune) => `"${commune.nom}" (emploi OR entreprise OR commerce OR artisan OR association OR projet OR inauguration OR développement) ${commune.codeDepartement || ''}`,
-  sante: (commune) => `(dépistage OR vaccination OR santé OR prévention OR campagne) ${commune.codeDepartement || ''}`,
-  seniors: (commune) => `(seniors OR personnes âgées OR aide sociale OR CCAS OR solidarité OR allocataire) ${commune.codeDepartement || ''}`,
-  dechets: (commune) => `(tri OR déchets OR collecte OR recyclage OR déchèterie OR verre OR compost) ${commune.codeDepartement || ''}`
+  general: (commune) => `"${commune.nom}" ${commune.codeDepartement || ''} when:60d`,
+  travaux: (commune) => `"${commune.nom}" (travaux OR chantier OR voirie OR circulation OR stationnement OR déviation) ${commune.codeDepartement || ''} when:60d`,
+  sorties: (commune) => `"${commune.nom}" (sortie OR spectacle OR festival OR manifestation OR animation OR exposition OR concert) ${commune.codeDepartement || ''} when:60d`,
+  economie: (commune) => `"${commune.nom}" (emploi OR entreprise OR commerce OR artisan OR association OR projet OR inauguration OR développement) ${commune.codeDepartement || ''} when:60d`,
+  sante: (commune) => `(dépistage OR vaccination OR santé OR prévention OR campagne) ${commune.codeDepartement || ''} when:60d`,
+  seniors: (commune) => `(seniors OR personnes âgées OR aide sociale OR CCAS OR solidarité OR allocataire) ${commune.codeDepartement || ''} when:60d`,
+  dechets: (commune) => `(tri OR déchets OR collecte OR recyclage OR déchèterie OR verre OR compost) ${commune.codeDepartement || ''} when:60d`
 };
 
 async function fetchRssItems(commune, theme = 'general') {
@@ -87,7 +88,7 @@ export async function fetchCivicAlerts(commune) {
   // Alertes météo via Google News thématique
   if (commune.codeDepartement) {
     try {
-      const query = encodeURIComponent(`alerte météo OR vigilance OR orage OR canicule OR neige OR vent ${commune.codeDepartement}`);
+      const query = encodeURIComponent(`alerte météo OR vigilance OR orage OR canicule OR neige OR vent ${commune.codeDepartement} when:60d`);
       const url = `/gnrss/search?q=${query}&hl=fr&gl=FR&ceid=FR:fr`;
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), NEWS_TIMEOUT_MS);

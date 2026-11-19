@@ -208,7 +208,9 @@ export async function fetchServicesPublics(commune) {
     .filter(r => isFresh(r.date_modification_datetime, { maxFutureDays: 0 }))
     .map(r => {
       const phones = parseFirstJsonArrayField(r.telephone);
-      const isMairie = (r.pivot || []).some(p => /mairie/i.test(p?.type_service_local || ''));
+      // pivot est une chaîne JSON (ex. '[{"type_service_local": "mairie"}]')
+      const pivotList = parseFirstJsonArrayField(r.pivot) || [];
+      const isMairie = pivotList.some(p => /mairie/i.test(p?.type_service_local || ''));
       return {
         nom: r.nom || null,
         telephone: phones?.[0]?.valeur?.trim() || null,

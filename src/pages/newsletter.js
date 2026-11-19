@@ -67,17 +67,20 @@ export class NewsletterPageView {
     try {
       const enriched = await fetchCommuneDetails(commune);
       const base = enriched || commune;
+      // Chaque service est isolé : l'échec d'un seul ne doit pas faire
+      // basculer tout le bulletin sur les contenus génériques.
+      const safe = (p, fallback) => p.catch(err => { console.warn('Service indisponible:', err); return fallback; });
       const [localNews, travauxNews, sortiesNews, economieNews, santeNews, seniorsNews, dechetsNews, civicAlerts, events, servicesPublics] = await Promise.all([
-        fetchCommuneNews(base, 'general'),
-        fetchCommuneNews(base, 'travaux'),
-        fetchCommuneNews(base, 'sorties'),
-        fetchCommuneNews(base, 'economie'),
-        fetchCommuneNews(base, 'sante'),
-        fetchCommuneNews(base, 'seniors'),
-        fetchCommuneNews(base, 'dechets'),
-        fetchCivicAlerts(base),
-        fetchCommuneEvents(base),
-        fetchServicesPublics(base)
+        safe(fetchCommuneNews(base, 'general'), []),
+        safe(fetchCommuneNews(base, 'travaux'), []),
+        safe(fetchCommuneNews(base, 'sorties'), []),
+        safe(fetchCommuneNews(base, 'economie'), []),
+        safe(fetchCommuneNews(base, 'sante'), []),
+        safe(fetchCommuneNews(base, 'seniors'), []),
+        safe(fetchCommuneNews(base, 'dechets'), []),
+        safe(fetchCivicAlerts(base), { pollen: [], meteo: [] }),
+        safe(fetchCommuneEvents(base), []),
+        safe(fetchServicesPublics(base), [])
       ]);
       const enrichedData = { ...base, localNews, travauxNews, sortiesNews, economieNews, santeNews, seniorsNews, dechetsNews, civicAlerts, events, servicesPublics };
       const bulletinData = generateCommuneBulletin(enrichedData);

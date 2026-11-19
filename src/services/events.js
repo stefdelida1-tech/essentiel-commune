@@ -3,6 +3,9 @@
  * Événements locaux à venir pour une commune.
  *
  * Sources (par ordre de priorité) :
+ *  - France Évasion Régions / DATAtourisme, API ouverte sans clé
+ *    (https://france-evasion-regions.com/api/open/evenements.json, Licence
+ *    Ouverte v2.0) — flux mutualisé entre toutes les communes.
  *  - DATAtourisme API (https://api.datatourisme.fr/v1) — clé gratuite via
  *    https://www.datatourisme.fr/utiliser-les-donnees, exposée en VITE_DATATOURISME_API_KEY
  *  - OpenAgenda API v2 — clé gratuite via https://openagenda.com/, exposée en
@@ -23,6 +26,73 @@ const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
 
 const DATATOURISME_API_KEY = import.meta.env?.VITE_DATATOURISME_API_KEY || '';
 const OPENAGENDA_API_KEY = import.meta.env?.VITE_OPENAGENDA_API_KEY || '';
+
+// Flux ouvert France Évasion (reprise DATAtourisme) : un seul fetch mutualisé
+// pour toutes les communes, filtrage géographique côté client.
+const FRANCE_EVASION_URL = 'https://france-evasion-regions.com/api/open/evenements.json?limit=500';
+let franceEvasionCache = null; // { timestamp, items }
+
+function normalizePlace(str) {
+  return (str || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9\s-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** Charge (et met en cache) le flux national d'événements France Évasion. */
+async function fetchFranceEvasionFeed() {
+  if (franceEvasionCache && (Date.now() - franceEvasionCache.timestamp) < CACHE_TTL_MS) {
+    return franceEvasionCache.items;
+  }
+  const data = await fetchJson(FRANCE_EVASION_URL);
+  const list = Array.isArray(data) ? data
+    : (data?.evenements || data?.results || data?.data || []);
+  franceEvasionCache = { timestamp: Date.now(), items: Array.isArray(list) ? list : [] };
+  return franceEvasionCache.items;
+}
+
+/**
+ * Événements via l'API ouverte France Évasion / DATAtourisme (sans clé).
+ * Le flux est national : on ne conserve que les événements localisés sur la
+ * commune (champ ville/commune) ou, à défaut de commune renseignée, sur son
+ * département quand le champ département est présent.
+ */
+async function fetchFranceEvasionEvents(commune) {
+  if (!commune?.nom) return [];
+
+  const feed = await fetchFranceEvasionFeed();
+  if (!feed.length) return [];
+
+  const nomNorm = normalizePlace(commune.nom);
+  const departNorm = normalizePlace(commune.departementNom || commune.codeDepartement || '');
+
+  return feed.map(ev => {
+    const ville = ev.ville || ev.commune || ev.city || ev.code_postal_ville || '';
+    const departement = ev.departement?.nom || ev.departement || ev.department || '';
+    const villeNorm = normalizePlace(typeof ville === 'string' ? ville : '');
+    const departNormEv = normalizePlace(typeof departement === 'string' ? departement : (departement?.nom || ''));
+
+    // Correspondance stricte sur la commune ; sans ville renseignée, on
+    // accepte le département de la commune comme périmètre « proche ».
+    const communeMatch = villeNorm
+      ? villeNorm === nomNorm || villeNorm.includes(nomNorm) || nomNorm.includes(villeNorm)
+      : (departNormEv && (departNormEv === departNorm || departNormEv.includes(departNorm)));
+    if (!communeMatch) return null;
+
+    return {
+      title: ev.nom || ev.titre || ev.title || '',
+      start: ev.date_debut || ev.start || ev.date || null,
+      end: ev.date_fin || ev.end || ev.date_debut || ev.start || null,
+      lieu: ev.adresse || [ville, departement].filter(Boolean).join(', ') || null,
+      url: ev.url || ev.lien || null,
+      image: ev.photo || ev.image || null,
+      source: 'France Évasion / DATAtourisme'
+    };
+  }).filter(e => e && e.title);
+}
 
 async function fetchJson(url) {
   const controller = new AbortController();
@@ -69,6 +139,7 @@ async function fetchDatatourismeEvents(commune) {
       start: place.startDate || null,
       end: place.endDate || place.startDate || null,
       lieu: placeText || null,
+      source: 'DATAtourisme',
       // On ne retient que les événements explicitement localisés sur la commune
       // quand le lieu est renseigné ; sinon on les laisse au filtre géographique.
       _communeMatch: !placeText || placeText.toLowerCase().includes(communeName)
@@ -99,7 +170,8 @@ async function fetchOpenAgendaEvents(commune) {
     end: ev.end || ev.start || null,
     lieu: ev.location?.[0]?.description || null,
     url: ev.url || null,
-    image: ev.image || null
+    image: ev.image || null,
+    source: 'OpenAgenda'
   })).filter(e => e.title);
 }
 
@@ -108,7 +180,7 @@ async function fetchOpenAgendaEvents(commune) {
  * @returns {Promise<Array<{title,start,end,lieu,url?,source}>}
  */
 export async function fetchCommuneEvents(commune) {
-  if (!commune || (!DATATOURISME_API_KEY && !OPENAGENDA_API_KEY)) return [];
+  if (!commune || !commune.nom) return [];
 
   const cacheKey = `events:${commune.code || commune.nom}`;
   const cached = eventsCache.get(cacheKey);
@@ -116,20 +188,21 @@ export async function fetchCommuneEvents(commune) {
     return cached.data;
   }
 
-  const [dtEvents, oaEvents] = await Promise.all([
+  const [feEvents, dtEvents, oaEvents] = await Promise.all([
+    fetchFranceEvasionEvents(commune).catch(() => []),
     fetchDatatourismeEvents(commune).catch(() => []),
     fetchOpenAgendaEvents(commune).catch(() => [])
   ]);
 
   const seen = new Set();
-  const merged = [...dtEvents, ...oaEvents]
+  const merged = [...feEvents, ...dtEvents, ...oaEvents]
     .map(e => ({
       title: e.title,
       start: e.start ? new Date(e.start).toISOString() : null,
       end: e.end ? new Date(e.end).toISOString() : null,
       lieu: e.lieu || null,
       url: e.url || null,
-      source: e.url ? 'OpenAgenda' : 'DATAtourisme'
+      source: e.source || (e.url ? 'OpenAgenda' : 'DATAtourisme')
     }))
     .filter(e => {
       if (!e.start || !parseDate(e.start)) return false;

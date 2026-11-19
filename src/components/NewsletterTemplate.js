@@ -150,7 +150,10 @@ function buildServicesSection(commune) {
 
 /** Insère les rubriques dynamiques (actualités RSS + repères territoire + services) après la 1ʳᵉ section. */
 function injectDynamicSections(sections, commune) {
-  const result = [...sections];
+  // Anti-obsolescence : les rubriques sans contenu réel sont écartées avant
+  // insertion pour ne pas laisser de cartes vides ni décaler les sections.
+  const result = (sections || [])
+    .filter(sec => sec && typeof sec.content === 'string' && sec.content.trim().length > 0);
   let offset = 0;
   const localNewsSection = buildNewsSection(commune, commune.localNews);
   if (localNewsSection) {
@@ -299,13 +302,7 @@ export function generateCommuneBulletin(commune) {
         <p style="margin-top: 0.75rem; font-size: 0.82rem; color: #64748b; font-style: italic;">
           📆 Événements et sorties du moment pour ${escapeHtml(commune.nom)} — agendas des 60 prochains jours.
         </p>
-      ` : `
-        <ul style="padding-left: 1.25rem; line-height: 1.6; display: flex; flex-direction: column; gap: 0.6rem;">
-          <li>📅 <strong>Agenda municipal :</strong> Consultez le site de la mairie et les supports d'information pour les animations, expositions et rencontres à venir.</li>
-          <li>🏛️ <strong>Vie associative :</strong> Clubs sportifs, comités des fêtes et associations culturelles animent la vie locale. Contactez la mairie pour proposer une initiative ou une sortie.</li>
-          <li>🎨 <strong>En famille :</strong> Les structures municipales et intercommunales organisent régulièrement des animations dédiées aux enfants et aux familles.</li>
-        </ul>
-      `;
+      ` : '';
 
   const sections = [
     {
@@ -318,16 +315,7 @@ export function generateCommuneBulletin(commune) {
         <p style="margin-top: 0.75rem; background: #eff6ff; padding: 0.6rem; border-radius: 6px; font-size: 0.88rem;">
           🚗 <strong>Astuce mobilité :</strong> Privilégiez les modes de déplacement actifs et le covoiturage pour les courts trajets en centre-bourg.
         </p>
-      ` : `
-        <ul style="padding-left: 1.25rem; line-height: 1.6; display: flex; flex-direction: column; gap: 0.5rem;">
-          <li><strong>Voiries et domaine public :</strong> Les opérations d'entretien et de réfection se poursuivent sur la commune de ${commune.nom}. Respectez la signalisation temporaire et adaptez vos trajets aux déviations éventuelles.</li>
-          <li><strong>Stationnement :</strong> Des fermetures temporaires de stationnement peuvent être mises en place autour des chantiers en cours. Renseignez-vous en mairie avant vos déplacements.</li>
-          <li><strong>Transports et déplacements :</strong> Consultez les horaires et les éventuelles perturbations des lignes desservant ${commune.nom} avant de partir.</li>
-        </ul>
-        <p style="margin-top: 0.75rem; background: #eff6ff; padding: 0.6rem; border-radius: 6px; font-size: 0.88rem;">
-          🚗 <strong>Astuce mobilité :</strong> Privilégiez les modes de déplacement actifs et le covoiturage pour les courts trajets en centre-bourg.
-        </p>
-      `
+      ` : ''
     },
     {
       tag: `📅 Que faire à ${commune.nom} ?`,
@@ -389,20 +377,19 @@ export function generateCommuneBulletin(commune) {
           </ul>
         ` : '';
 
-        return `
-          ${meteoItems ? `<ul style="padding-left: 1.25rem; line-height: 1.6; display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.75rem;">${meteoItems}</ul>` : ''}
-          <ul style="padding-left: 1.25rem; line-height: 1.6; display: flex; flex-direction: column; gap: 0.5rem;">
-            ${airItem}
-          </ul>
-          ${santeContent}
-          ${seniorsContent}
-          ${dechetsContent}
-          <ul style="padding-left: 1.25rem; line-height: 1.6; display: flex; flex-direction: column; gap: 0.5rem;">
-            ${!santeLinks ? `<li>🎗️ <strong>Santé et prévention :</strong> Les campagnes de dépistage et de sensibilisation (saisonnières ou thématiques) sont annoncées par la mairie et les structures de santé locales.</li>` : ''}
-            ${!seniorsLinks ? `<li>🎁 <strong>Seniors et familles :</strong> Les actions sociales et les dispositifs d'aide (CCAS, aides locales) peuvent être demandés auprès de la mairie ou des structures compétentes.</li>` : ''}
-            ${!dechetsLinks ? `<li>♻️ <strong>Tri et déchets :</strong> Respectez le calendrier de collecte et les consignes de tri de votre secteur pour un service plus efficace.</li>` : ''}
-          </ul>
-        `;
+        const parts = [
+          meteoItems ? `<ul style="padding-left: 1.25rem; line-height: 1.6; display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.75rem;">${meteoItems}</ul>` : '',
+          airItem ? `<ul style="padding-left: 1.25rem; line-height: 1.6; display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.75rem;"><li>${airItem}</li></ul>` : '',
+          santeContent,
+          seniorsContent,
+          dechetsContent
+        ].filter(Boolean);
+
+        // Anti-obsolescence : sans alerte, indicateur ou actualité fraîche,
+        // la rubrique est masquée plutôt que de afficher du contenu générique.
+        if (!parts.length) return '';
+
+        return parts.join('');
       })()
     }
   ];
