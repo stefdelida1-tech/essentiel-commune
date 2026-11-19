@@ -18,6 +18,7 @@
  */
 
 import { filterEventsInWindow, parseDate } from './freshness.js';
+import { fetchNeighborCommunes } from './neighborCommunes.js';
 
 const EVENTS_TIMEOUT_MS = 8000;
 const MAX_EVENTS = 5;
@@ -57,10 +58,11 @@ async function fetchFranceEvasionFeed() {
 /**
  * Événements via l'API ouverte France Évasion / DATAtourisme (sans clé).
  * Le flux est national : on ne conserve que les événements localisés sur la
- * commune (champ ville/commune) ou, à défaut de commune renseignée, sur son
- * département quand le champ département est présent.
+ * commune (champ ville/commune — `lieuNames` permet d'élargir aux communes
+ * voisines) ou, à défaut de commune renseignée, sur son département quand le
+ * champ département est présent.
  */
-async function fetchFranceEvasionEvents(commune) {
+async function fetchFranceEvasionEvents(commune, lieuNames = null) {
   if (!commune?.nom) return [];
 
   const feed = await fetchFranceEvasionFeed();
@@ -75,18 +77,25 @@ async function fetchFranceEvasionEvents(commune) {
     const villeNorm = normalizePlace(typeof ville === 'string' ? ville : '');
     const departNormEv = normalizePlace(typeof departement === 'string' ? departement : (departement?.nom || ''));
 
-    // Correspondance stricte sur la commune ; sans ville renseignée, on
-    // accepte le département de la commune comme périmètre « proche ».
+    // Correspondance sur la commune (ou sur une voisine si lieuNames est fourni) ;
+    // sans ville renseignée, on accepte le département comme périmètre « proche ».
     const communeMatch = villeNorm
-      ? villeNorm === nomNorm || villeNorm.includes(nomNorm) || nomNorm.includes(villeNorm)
+      ? (lieuNames
+          ? lieuNames.has(villeNorm)
+          : villeNorm === nomNorm || villeNorm.includes(nomNorm) || nomNorm.includes(villeNorm))
       : (departNormEv && (departNormEv === departNorm || departNormEv.includes(departNorm)));
     if (!communeMatch) return null;
+
+    // Le nom de la ville est toujours affiché : indispensable quand
+    // l'événement provient d'une commune voisine (fallback rural).
+    const lieuParts = [ev.adresse, ville].filter(Boolean);
+    const lieu = [...new Set(lieuParts.map(String))].join(', ') || departement || null;
 
     return {
       title: ev.nom || ev.titre || ev.title || '',
       start: ev.date_debut || ev.start || ev.date || null,
       end: ev.date_fin || ev.end || ev.date_debut || ev.start || null,
-      lieu: ev.adresse || [ville, departement].filter(Boolean).join(', ') || null,
+      lieu,
       url: ev.url || ev.lien || null,
       image: ev.photo || ev.image || null,
       source: 'France Évasion / DATAtourisme'
@@ -194,23 +203,41 @@ export async function fetchCommuneEvents(commune) {
     fetchOpenAgendaEvents(commune).catch(() => [])
   ]);
 
+  const toMerged = (e) => ({
+    title: e.title,
+    start: e.start ? new Date(e.start).toISOString() : null,
+    end: e.end ? new Date(e.end).toISOString() : null,
+    lieu: e.lieu || null,
+    url: e.url || null,
+    source: e.source || (e.url ? 'OpenAgenda' : 'DATAtourisme')
+  });
+
   const seen = new Set();
-  const merged = [...feEvents, ...dtEvents, ...oaEvents]
-    .map(e => ({
-      title: e.title,
-      start: e.start ? new Date(e.start).toISOString() : null,
-      end: e.end ? new Date(e.end).toISOString() : null,
-      lieu: e.lieu || null,
-      url: e.url || null,
-      source: e.source || (e.url ? 'OpenAgenda' : 'DATAtourisme')
-    }))
-    .filter(e => {
-      if (!e.start || !parseDate(e.start)) return false;
-      const key = e.title.toLowerCase().replace(/[^a-z0-9àâäéèêëïîôùûüç]+/gi, ' ').trim();
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
+  const dedupeFilter = (e) => {
+    if (!e.start || !parseDate(e.start)) return false;
+    const key = e.title.toLowerCase().replace(/[^a-z0-9àâäéèêëïîôùûüç]+/gi, ' ').trim();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  };
+
+  let rawEvents = [...feEvents, ...dtEvents, ...oaEvents];
+
+  // Fallback géographique (petites communes rurales) : si aucun événement
+  // propre dans la fenêtre J → J+60, on élargit aux communes voisines
+  // (même code postal, sinon même département) en gardant le nom de la ville.
+  let neighborEvents = [];
+  const probe = filterEventsInWindow(rawEvents.map(toMerged)).length;
+  if (probe === 0) {
+    const neighbors = await fetchNeighborCommunes(commune).catch(() => []);
+    if (neighbors.length) {
+      const lieuNames = new Set([commune.nom, ...neighbors.map(n => n.nom)].map(normalizePlace));
+      neighborEvents = await fetchFranceEvasionEvents(commune, lieuNames).catch(() => []);
+      rawEvents = rawEvents.concat(neighborEvents);
+    }
+  }
+
+  const merged = rawEvents.map(toMerged).filter(dedupeFilter);
 
   const items = filterEventsInWindow(merged)
     .sort((a, b) => parseDate(a.start) - parseDate(b.start))

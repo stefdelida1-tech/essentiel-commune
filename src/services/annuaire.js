@@ -12,6 +12,7 @@
  */
 
 import { isFresh, parseDate } from './freshness.js';
+import { fetchNeighborCommunes } from './neighborCommunes.js';
 
 const RNE_MAIRES_RESOURCE = '2876a346-d50c-4911-934e-19ee07b0e503';
 const ANNUAIRE_DATASET = 'api-lannuaire-administration';
@@ -187,10 +188,39 @@ export async function fetchMairieInfo(commune) {
   return info;
 }
 
+/** Transforme une fiche annuaire en service affichable. */
+function recordToService(r) {
+  const phones = parseFirstJsonArrayField(r.telephone);
+  // pivot est une chaîne JSON (ex. '[{"type_service_local": "mairie"}]')
+  const pivotList = parseFirstJsonArrayField(r.pivot) || [];
+  const isMairie = pivotList.some(p => /mairie/i.test(p?.type_service_local || ''));
+  return {
+    nom: r.nom || null,
+    telephone: phones?.[0]?.valeur?.trim() || null,
+    url: r.url_service_public || null,
+    isMairie,
+    dateMaj: r.date_modification_datetime || null
+  };
+}
+
+/** Types de services de proximité priorisés pour les petites communes. */
+const PROXIMITÉ_TYPES = /france.?services|poste|dechet|tr[eé]sorerie|ccas|maison|sapeur|police|gendarmerie/i;
+
+function proximityScore(service, record) {
+  const pivotList = parseFirstJsonArrayField(record?.pivot) || [];
+  const types = pivotList.map(p => p?.type_service_local || '').join(' ');
+  const hay = `${types} ${service.nom || ''}`;
+  return PROXIMITÉ_TYPES.test(hay) ? 1 : 0;
+}
+
 /**
  * Services publics et points d'accueil de la commune (hors mairie),
  * limités aux fiches modifiées dans les 60 derniers jours.
- * @returns {Promise<Array<{nom, telephone, url, dateMaj}>>}
+ * Pour les petites communes peu dotées, on complète avec les services de
+ * proximité (France Services, Poste, déchetterie/EPCI, trésorerie…) des
+ * communes voisines du même code postal ou département — la commune
+ * d'origine est alors indiquée (`commune`).
+ * @returns {Promise<Array<{nom, telephone, url, dateMaj, commune?}>>}
  */
 export async function fetchServicesPublics(commune) {
   const code = commune?.code;
@@ -203,24 +233,44 @@ export async function fetchServicesPublics(commune) {
   const data = await fetchJson(url);
   const results = data?.results || [];
 
-  const items = results
+  const own = results
     // Anti-obsolescence : fiches modifiées il y a moins de 60 jours uniquement
     .filter(r => isFresh(r.date_modification_datetime, { maxFutureDays: 0 }))
-    .map(r => {
-      const phones = parseFirstJsonArrayField(r.telephone);
-      // pivot est une chaîne JSON (ex. '[{"type_service_local": "mairie"}]')
-      const pivotList = parseFirstJsonArrayField(r.pivot) || [];
-      const isMairie = pivotList.some(p => /mairie/i.test(p?.type_service_local || ''));
-      return {
-        nom: r.nom || null,
-        telephone: phones?.[0]?.valeur?.trim() || null,
-        url: r.url_service_public || null,
-        isMairie,
-        dateMaj: r.date_modification_datetime || null
-      };
-    })
-    .filter(s => s.nom && !s.isMairie)
+    .map(r => ({ service: recordToService(r), record: r }))
+    .filter(({ service }) => service.nom && !service.isMairie)
+    .sort((a, b) => proximityScore(b.service, b.record) - proximityScore(a.service, a.record))
+    .map(({ service }) => service)
     .slice(0, 4);
+
+  const items = [...own];
+
+  // Fallback géographique : moins de 4 services propres → on pioche dans les
+  // communes voisines (code postal d'abord, département sinon).
+  if (items.length < 4) {
+    const neighbors = await fetchNeighborCommunes(commune).catch(() => []);
+    const neighborData = await Promise.all(
+      neighbors.slice(0, 6).map(async (n) => {
+        const nWhere = encodeURIComponent(`code_insee_commune LIKE "${n.code}"`);
+        const nUrl = `https://api-lannuaire.service-public.fr/api/explore/v2.1/catalog/datasets/${ANNUAIRE_DATASET}/records?where=${nWhere}&limit=15&order_by=date_modification_datetime%20desc`;
+        const nData = await fetchJson(nUrl);
+        return (nData?.results || []).map(r => ({ service: recordToService(r), record: r, communeNom: n.nom }));
+      })
+    );
+
+    const seenNoms = new Set(items.map(s => (s.nom || '').toLowerCase()));
+    const candidates = neighborData
+      .flat()
+      .filter(({ service }) => service.nom && !service.isMairie)
+      .sort((a, b) => proximityScore(b.service, b.record) - proximityScore(a.service, a.record));
+
+    for (const { service, communeNom } of candidates) {
+      if (items.length >= 4) break;
+      const key = (service.nom || '').toLowerCase();
+      if (seenNoms.has(key)) continue;
+      seenNoms.add(key);
+      items.push({ ...service, commune: communeNom });
+    }
+  }
 
   servicesCache.set(code, items);
   return items;

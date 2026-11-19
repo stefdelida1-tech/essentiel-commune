@@ -40,9 +40,8 @@ const NEWS_QUERIES = {
   dechets: (commune) => `(tri OR déchets OR collecte OR recyclage OR déchèterie OR verre OR compost) ${commune.codeDepartement || ''} when:60d`
 };
 
-async function fetchRssItems(commune, theme = 'general') {
-  const depart = NEWS_QUERIES[theme] ? theme : 'general';
-  const query = encodeURIComponent(NEWS_QUERIES[depart](commune));
+async function fetchRssQuery(rawQuery) {
+  const query = encodeURIComponent(rawQuery);
   // Endpoint same-origin proxyfié (proxy Vite en dev, rewrite Vercel en prod)
   // car news.google.com n'expose pas d'en-tête CORS.
   const url = `/gnrss/search?q=${query}&hl=fr&gl=FR&ceid=FR:fr`;
@@ -67,6 +66,11 @@ async function fetchRssItems(commune, theme = 'general') {
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function fetchRssItems(commune, theme = 'general') {
+  const depart = NEWS_QUERIES[theme] ? theme : 'general';
+  return fetchRssQuery(NEWS_QUERIES[depart](commune));
 }
 
 /**
@@ -125,6 +129,23 @@ export async function fetchCivicAlerts(commune) {
   return alerts;
 }
 
+// Requête de repli géographique pour les petites communes : quand la recherche
+// sur le nom exact renvoie trop peu d'articles frais, on élargit à l'EPCI
+// (intercommunalité) puis au département.
+const FALLBACK_PREFIXES = /^(Communauté de communes?|Communauté d'agglomération|Communauté urbaine|Métropole du Grand Paris|Pays)\s+(de|d'|des|du)?\s*/i;
+
+function fallbackNewsTarget(commune) {
+  const epci = (commune.epciNom || '').replace(FALLBACK_PREFIXES, '').trim();
+  if (epci && epci.length >= 4) {
+    return { pseudo: { ...commune, nom: epci }, perimetre: `EPCI : ${commune.epciNom}` };
+  }
+  const dep = commune.departementNom || (commune.codeDepartement ? `Département ${commune.codeDepartement}` : null);
+  if (dep) {
+    return { pseudo: { ...commune, nom: dep }, perimetre: `Département : ${dep}` };
+  }
+  return null;
+}
+
 /**
  * Retourne les actualités les plus pertinentes pour une commune.
  * @param {string} theme 'general' | 'travaux'
@@ -160,14 +181,30 @@ export async function fetchCommuneNews(commune, theme = 'general') {
     // Dédupliquer : Google News republie souvent le même titre via
     // plusieurs sources ; on garde la première occurrence.
     const seenTitles = new Set();
-    const unique = scored.filter((item) => {
+    const dedupe = (list) => list.filter((item) => {
       const key = normalize(item.title).replace(/[^a-z0-9]+/g, ' ').trim();
       if (!key || seenTitles.has(key)) return false;
       seenTitles.add(key);
       return true;
     });
 
-    items = unique.slice(0, MAX_ITEMS);
+    items = dedupe(scored);
+
+    // Fallback géographique (petites communes rurales) : si moins de 3
+    // articles propres et frais, on complète via l'EPCI puis le département.
+    if (items.length < 3) {
+      const target = fallbackNewsTarget(commune);
+      if (target) {
+        const rawFallback = await fetchRssItems(target.pseudo, theme).catch(() => []);
+        const freshFallback = rawFallback
+          .filter(item => isFresh(item.pubDateTs ?? item.pubDate))
+          .map(item => ({ ...item, perimetre: target.perimetre }));
+        const extra = dedupe(freshFallback).slice(0, MAX_ITEMS - items.length);
+        items = items.concat(extra);
+      }
+    }
+
+    items = items.slice(0, MAX_ITEMS);
   } catch (err) {
     console.warn('Actualités indisponibles pour', commune.nom, err);
   }

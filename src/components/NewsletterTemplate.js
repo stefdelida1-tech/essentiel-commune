@@ -23,9 +23,10 @@ function buildNewsSection(commune, news) {
     .map(item => {
       const title = escapeHtml(item.title);
       const source = item.source ? ` <span style="color: #64748b; font-size: 0.82rem;">— ${escapeHtml(item.source)}</span>` : '';
+      const perimetre = item.perimetre ? ` <span style="color: #b45309; font-size: 0.78rem;">• ${escapeHtml(item.perimetre)}</span>` : '';
       const link = item.link
-        ? `<a href="${escapeHtml(item.link)}" target="_blank" rel="noopener noreferrer" style="color: #1e40af; text-decoration: none;"><strong>${title}</strong></a>${source}`
-        : `<strong>${title}</strong>${source}`;
+        ? `<a href="${escapeHtml(item.link)}" target="_blank" rel="noopener noreferrer" style="color: #1e40af; text-decoration: none;"><strong>${title}</strong></a>${source}${perimetre}`
+        : `<strong>${title}</strong>${source}${perimetre}`;
       return `<li>${link}</li>`;
     })
     .join('');
@@ -122,13 +123,16 @@ function buildServicesSection(commune) {
     .filter(s => s && s.nom && isFresh(s.dateMaj, { maxFutureDays: 0 }))
     .map(s => {
       const nom = escapeHtml(s.nom);
+      const communeLabel = s.commune
+        ? ` <span style="color: #64748b; font-size: 0.8rem;">— ${escapeHtml(s.commune)}</span>`
+        : '';
       const tel = s.telephone
         ? ` — <a href="tel:${escapeHtml(s.telephone.replace(/\s/g, ''))}" style="color: #1e40af; text-decoration: none;">${escapeHtml(s.telephone)}</a>`
         : '';
       const link = s.url
         ? ` <a href="${escapeHtml(s.url)}" target="_blank" rel="noopener noreferrer" style="color: #1e40af; font-size: 0.82rem;">fiche</a>`
         : '';
-      return `<li>🏛️ <strong>${nom}</strong>${tel}${link}</li>`;
+      return `<li>🏛️ <strong>${nom}</strong>${communeLabel}${tel}${link}</li>`;
     })
     .join('');
 
@@ -254,29 +258,25 @@ export function generateCommuneBulletin(commune) {
   // Helper pour construire les liens d'actualités (max 3 par défaut)
   // Anti-obsolescence : seules les actualités de moins de 60 jours sont affichées.
   const isNewsFresh = (item) => item && item.title && isFresh(item.pubDateTs ?? item.pubDate);
+  const renderNewsItem = (item) => {
+    const title = escapeHtml(item.title);
+    const source = item.source ? ` <span style="color: #64748b; font-size: 0.82rem;">— ${escapeHtml(item.source)}</span>` : '';
+    const perimetre = item.perimetre ? ` <span style="color: #b45309; font-size: 0.78rem;">• ${escapeHtml(item.perimetre)}</span>` : '';
+    return item.link
+      ? `<li><a href="${escapeHtml(item.link)}" target="_blank" rel="noopener noreferrer" style="color: #1e40af; text-decoration: none;"><strong>${title}</strong></a>${source}${perimetre}</li>`
+      : `<li><strong>${title}</strong>${source}${perimetre}</li>`;
+  };
   const buildLinks = (news, max = 3) => (news || [])
     .filter(isNewsFresh)
     .slice(0, max)
-    .map(item => {
-      const title = escapeHtml(item.title);
-      const source = item.source ? ` <span style="color: #64748b; font-size: 0.82rem;">— ${escapeHtml(item.source)}</span>` : '';
-      return item.link
-        ? `<li><a href="${escapeHtml(item.link)}" target="_blank" rel="noopener noreferrer" style="color: #1e40af; text-decoration: none;"><strong>${title}</strong></a>${source}</li>`
-        : `<li><strong>${title}</strong>${source}</li>`;
-    })
+    .map(renderNewsItem)
     .join('');
 
   // Helper pour la section rappel citoyen (max 2 articles)
   const buildSectionLinks = (news, max = 2) => (news || [])
     .filter(isNewsFresh)
     .slice(0, max)
-    .map(item => {
-      const title = escapeHtml(item.title);
-      const source = item.source ? ` <span style="color: #64748b; font-size: 0.82rem;">— ${escapeHtml(item.source)}</span>` : '';
-      return item.link
-        ? `<li><a href="${escapeHtml(item.link)}" target="_blank" rel="noopener noreferrer" style="color: #1e40af; text-decoration: none;"><strong>${title}</strong></a>${source}</li>`
-        : `<li><strong>${title}</strong>${source}</li>`;
-    })
+    .map(renderNewsItem)
     .join('');
 
   const travauxLinks = buildLinks(commune.travauxNews);
